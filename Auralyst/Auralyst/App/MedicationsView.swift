@@ -17,6 +17,7 @@ enum EditorMode: Identifiable {
 struct MedicationsView: View {
     let journal: SQLiteJournal
     @Environment(\.dismiss) private var dismiss
+    @Dependency(\.defaultDatabase) private var database
 
     @FetchAll var medications: [SQLiteMedication]
 
@@ -50,6 +51,13 @@ struct MedicationsView: View {
                 } else {
                     ForEach(medications) { medication in
                         medicationRow(medication)
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    deleteMedication(medication)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
                     }
                 }
             }
@@ -72,9 +80,9 @@ struct MedicationsView: View {
                 }
             }
         }
-    }
+}
 
-    private func medicationRow(_ medication: SQLiteMedication) -> some View {
+private func medicationRow(_ medication: SQLiteMedication) -> some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(medication.name)
@@ -112,6 +120,29 @@ struct MedicationsView: View {
         .padding(.vertical, 2)
     }
 
+}
+
+private extension MedicationsView {
+    func deleteMedication(_ medication: SQLiteMedication) {
+        do {
+            try database.write { db in
+                try SQLiteMedicationSchedule
+                    .where { $0.medicationID == medication.id }
+                    .delete()
+                    .execute(db)
+
+                try SQLiteMedicationIntake
+                    .where { $0.medicationID == medication.id }
+                    .delete()
+                    .execute(db)
+
+                try SQLiteMedication.find(medication.id).delete().execute(db)
+            }
+            NotificationCenter.default.post(name: .medicationsDidChange, object: nil)
+        } catch {
+            assertionFailure("Failed to delete medication: \(error)")
+        }
+    }
 }
 
 // MedicationEditorView is now in its own file

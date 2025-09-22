@@ -105,4 +105,69 @@ struct DataStoreSuite {
         #expect(reloaded?.timestamp == editedIntake.timestamp)
         #expect(reloaded?.notes == editedIntake.notes)
     }
+
+    @MainActor
+    @Test("Deleting a medication cascades schedules and intakes")
+    func deleteMedicationRemovesRelatedRecords() throws {
+        try prepareDependencies {
+            try $0.bootstrapDatabase()
+        }
+
+        @Dependency(\.defaultDatabase) var database
+
+        let store = DataStore()
+        let journal = store.createJournal()
+        let medication = store.createMedication(
+            for: journal,
+            name: "Melatonin",
+            defaultAmount: 5,
+            defaultUnit: "mg"
+        )
+
+        let schedule = SQLiteMedicationSchedule(
+            medicationID: medication.id,
+            label: "Bedtime",
+            amount: 1,
+            unit: "tablet",
+            cadence: "daily",
+            interval: 1,
+            daysOfWeekMask: MedicationWeekday.mask(for: MedicationWeekday.allCases),
+            hour: 22,
+            minute: 30,
+            isActive: true,
+            sortOrder: 0
+        )
+
+        try database.write { db in
+            try SQLiteMedicationSchedule.insert { schedule }.execute(db)
+            try SQLiteMedicationIntake.insert {
+                SQLiteMedicationIntake(
+                    medicationID: medication.id,
+                    scheduleID: schedule.id,
+                    amount: 1,
+                    unit: "tablet",
+                    timestamp: .now
+                )
+            }.execute(db)
+        }
+
+        try store.deleteMedication(medication.id)
+
+        let remainingMedications = store.fetchMedications(for: journal)
+        #expect(remainingMedications.isEmpty)
+
+        let remainingSchedules = try database.read { db in
+            try SQLiteMedicationSchedule
+                .where { $0.medicationID == medication.id }
+                .fetchAll(db)
+        }
+        #expect(remainingSchedules.isEmpty)
+
+        let remainingIntakes = try database.read { db in
+            try SQLiteMedicationIntake
+                .where { $0.medicationID == medication.id }
+                .fetchAll(db)
+        }
+        #expect(remainingIntakes.isEmpty)
+    }
 }

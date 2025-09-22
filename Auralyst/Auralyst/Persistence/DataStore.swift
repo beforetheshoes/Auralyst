@@ -141,6 +141,28 @@ final class DataStore {
 
     // MARK: - Medication Operations
 
+    func deleteMedication(_ medicationID: UUID) throws {
+        do {
+            try database.write { db in
+                try SQLiteMedicationSchedule
+                    .where { $0.medicationID == medicationID }
+                    .delete()
+                    .execute(db)
+
+                try SQLiteMedicationIntake
+                    .where { $0.medicationID == medicationID }
+                    .delete()
+                    .execute(db)
+
+                try SQLiteMedication.find(medicationID).delete().execute(db)
+            }
+            logger.info("Deleted medication: \(medicationID)")
+        } catch {
+            logger.error("Error deleting medication \(medicationID): \(error.localizedDescription)")
+            throw error
+        }
+    }
+
     func createMedication(for journal: SQLiteJournal, name: String, defaultAmount: Double? = nil, defaultUnit: String? = nil) -> SQLiteMedication {
         let medication = SQLiteMedication(
             journalID: journal.id,

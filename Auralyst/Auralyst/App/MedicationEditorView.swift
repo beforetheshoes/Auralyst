@@ -29,6 +29,7 @@ struct MedicationEditorView: View {
     }
 
     @State private var scheduleDrafts: [ScheduleDraft] = []
+    @State private var showingDeleteConfirmation = false
 
     init(journalID: UUID, medicationID: UUID? = nil) {
         self.journalID = journalID
@@ -95,10 +96,21 @@ struct MedicationEditorView: View {
                         } label: {
                             Label("Add Dose", systemImage: "plus")
                         }
+                }
+            }
+
+            if medicationID != nil {
+                Section {
+                    Button(role: .destructive) {
+                        showingDeleteConfirmation = true
+                    } label: {
+                        Text("Delete Medication")
+                            .frame(maxWidth: .infinity, alignment: .center)
                     }
                 }
             }
-            .navigationTitle(medicationID == nil ? "Add Medication" : "Edit Medication")
+        }
+        .navigationTitle(medicationID == nil ? "Add Medication" : "Edit Medication")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -110,6 +122,10 @@ struct MedicationEditorView: View {
                 }
             }
             .onAppear { loadIfNeeded() }
+        }
+        .confirmationDialog("Delete Medication?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { deleteMedication() }
+            Button("Cancel", role: .cancel) { showingDeleteConfirmation = false }
         }
     }
 
@@ -323,6 +339,32 @@ struct MedicationEditorView: View {
             for id in toDelete {
                 try SQLiteMedicationSchedule.find(id).delete().execute(db)
             }
+        }
+    }
+
+    private func deleteMedication() {
+        guard let medicationID else { return }
+        @Dependency(\.defaultDatabase) var database
+        do {
+            try database.write { db in
+                try SQLiteMedicationSchedule
+                    .where { $0.medicationID == medicationID }
+                    .delete()
+                    .execute(db)
+
+                try SQLiteMedicationIntake
+                    .where { $0.medicationID == medicationID }
+                    .delete()
+                    .execute(db)
+
+                try SQLiteMedication.find(medicationID).delete().execute(db)
+            }
+            NotificationCenter.default.post(name: .medicationsDidChange, object: nil)
+            showingDeleteConfirmation = false
+            dismiss()
+        } catch {
+            showingDeleteConfirmation = false
+            assertionFailure("Failed to delete medication: \(error)")
         }
     }
 }

@@ -7,7 +7,9 @@ struct AuralystApp: App {
     @State private var dataStore = DataStore()
 
     private var isRunningTests: Bool {
-        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        let environment = ProcessInfo.processInfo.environment
+        if environment["FORCE_FULL_APP"] == "1" { return false }
+        return environment["XCTestConfigurationFilePath"] != nil
     }
 
     init() {
