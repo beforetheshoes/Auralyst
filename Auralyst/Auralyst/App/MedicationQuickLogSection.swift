@@ -1,5 +1,5 @@
+import Foundation
 import SQLiteData
-import StructuredQueries
 import SwiftUI
 import Dependencies
 
@@ -10,20 +10,18 @@ struct MedicationQuickLogSection: View {
 
     @Environment(DataStore.self) private var dataStore
 
-    @State private var medications: [SQLiteMedication] = []
-    @State private var schedulesByMedication: [UUID: [SQLiteMedicationSchedule]] = [:]
-
+    @State private var snapshot: MedicationQuickLogSnapshot = .empty
     @State private var selectedDate: Date = Calendar.current.startOfDay(for: Date())
-    @State private var takenByScheduleID: [UUID: SQLiteMedicationIntake] = [:]
 
-    @State private var asNeededTarget: SQLiteMedication?
+    @State private var navigatingMedication: NavigationMedication?
+    private struct NavigationMedication: Identifiable, Hashable { let id: UUID }
 
     var body: some View {
         Section("Quick Medication Log") {
             // Date selector to backfill previous days
             DatePicker("Log Date", selection: $selectedDate, displayedComponents: [.date])
                 .onChange(of: selectedDate) { _, _ in
-                    reloadIntakesForSelectedDay()
+                    refreshData()
                 }
 
             // Scheduled medications
@@ -43,7 +41,7 @@ struct MedicationQuickLogSection: View {
                                     medication: med,
                                     schedule: sched,
                                     date: selectedDate,
-                                    isTaken: takenByScheduleID[sched.id] != nil,
+                                    isTaken: snapshot.takenByScheduleID[sched.id] != nil,
                                     toggle: { isOn in
                                         if isOn { logScheduledDose(schedule: sched, medication: med) }
                                         else { unlogScheduledDose(schedule: sched) }
@@ -67,7 +65,7 @@ struct MedicationQuickLogSection: View {
                             Text(med.name)
                             Spacer()
                             Button {
-                                asNeededTarget = med
+                                navigatingMedication = NavigationMedication(id: med.id)
                             } label: {
                                 Image(systemName: "plus.circle")
                             }
@@ -87,28 +85,59 @@ struct MedicationQuickLogSection: View {
                     .font(.caption)
             }
         }
-        .onAppear(perform: loadAll)
-        .sheet(item: $asNeededTarget) { med in
-            AsNeededIntakeSheet(medication: med, defaultDate: selectedDate) {
-                reloadIntakesForSelectedDay()
+        .onReceive(NotificationCenter.default.publisher(for: .medicationsDidChange)) { _ in
+            refreshData()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .medicationIntakesDidChange)) { _ in
+            refreshData()
+        }
+        .onAppear { refreshData() }
+        .navigationDestination(item: $navigatingMedication) { payload in
+            if let med = latestMedication(with: payload.id) {
+                AsNeededIntakeView(
+                    medication: med,
+                    defaultDate: selectedDate,
+                    onSaved: {
+                        refreshData(force: true)
+                    }
+                )
+            } else {
+                Text("Medication unavailable")
             }
         }
+    }
+
+    private func refreshData(force: Bool = false) {
+        do {
+            snapshot = try MedicationQuickLogLoader(dataStore: dataStore)
+                .load(journalID: journalID, on: selectedDate)
+        } catch {
+            snapshot = .empty
+        }
+    }
+
+    private func latestMedication(with id: UUID) -> SQLiteMedication? {
+        if let current = snapshot.medications.first(where: { $0.id == id }) {
+            return current
+        }
+        @Dependency(\.defaultDatabase) var database
+        return try? database.read { db in try SQLiteMedication.find(id).fetchOne(db) }
     }
 
     // MARK: - Derived Collections
 
     private var scheduledMedications: [SQLiteMedication] {
-        medications.filter { !($0.isAsNeeded ?? false) }
+        snapshot.medications.filter { !($0.isAsNeeded ?? false) }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     private var asNeededMedications: [SQLiteMedication] {
-        medications.filter { $0.isAsNeeded ?? false }
+        snapshot.medications.filter { $0.isAsNeeded ?? false }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     private func scheduledDoses(for medication: SQLiteMedication, on date: Date) -> [SQLiteMedicationSchedule]? {
-        let all = schedulesByMedication[medication.id] ?? []
+        let all = snapshot.schedulesByMedication[medication.id] ?? []
 
         // If no explicit doses are defined, default to once-daily at 8:00 AM
         if all.isEmpty {
@@ -149,58 +178,6 @@ struct MedicationQuickLogSection: View {
         return MedicationWeekday(rawValue: w) ?? .monday
     }
 
-    // MARK: - Loading
-
-    private func loadAll() {
-        guard let journal = dataStore.fetchJournal(id: journalID) else { return }
-        medications = dataStore.fetchMedications(for: journal)
-        loadSchedules()
-        reloadIntakesForSelectedDay()
-    }
-
-    private func loadSchedules() {
-        @Dependency(\.defaultDatabase) var database
-        var mapping: [UUID: [SQLiteMedicationSchedule]] = [:]
-        do {
-            try database.read { db in
-                for med in medications {
-                    let scheds = try SQLiteMedicationSchedule
-                        .where { $0.medicationID == med.id }
-                        .fetchAll(db)
-                    if !scheds.isEmpty { mapping[med.id] = scheds }
-                }
-            }
-            schedulesByMedication = mapping
-        } catch {
-            // ignore for now
-        }
-    }
-
-    private func reloadIntakesForSelectedDay() {
-        @Dependency(\.defaultDatabase) var database
-        let bounds = dayBounds(for: selectedDate)
-        var taken: [UUID: SQLiteMedicationIntake] = [:]
-        do {
-            let medIDs = Set(medications.map { $0.id })
-            let intakes = try database.read { db in
-                try SQLiteMedicationIntake
-                    .where { $0.timestamp >= bounds.start && $0.timestamp < bounds.end }
-                    .fetchAll(db)
-            }
-            for intake in intakes where medIDs.contains(intake.medicationID) {
-                if let sid = intake.scheduleID {
-                    taken[sid] = intake
-                } else {
-                    // Map as-needed entries to synthetic once-daily schedule id so the checkbox reflects taken state
-                    taken[intake.medicationID] = intake
-                }
-            }
-            takenByScheduleID = taken
-        } catch {
-            // ignore for now
-        }
-    }
-
     // MARK: - Actions
 
     private func logScheduledDose(schedule: SQLiteMedicationSchedule, medication: SQLiteMedication) {
@@ -222,7 +199,8 @@ struct MedicationQuickLogSection: View {
             try database.write { db in
                 try SQLiteMedicationIntake.insert { newIntake }.execute(db)
             }
-            reloadIntakesForSelectedDay()
+            NotificationCenter.default.post(name: .medicationIntakesDidChange, object: nil)
+            refreshData(force: true)
         } catch {
             // ignore for now
         }
@@ -230,12 +208,13 @@ struct MedicationQuickLogSection: View {
 
     private func unlogScheduledDose(schedule: SQLiteMedicationSchedule) {
         @Dependency(\.defaultDatabase) var database
-        if let intake = takenByScheduleID[schedule.id] {
+        if let intake = snapshot.takenByScheduleID[schedule.id] {
             do {
                 try database.write { db in
                     try SQLiteMedicationIntake.find(intake.id).delete().execute(db)
                 }
-                reloadIntakesForSelectedDay()
+                NotificationCenter.default.post(name: .medicationIntakesDidChange, object: nil)
+                refreshData(force: true)
             } catch {
                 // ignore for now
             }
@@ -256,7 +235,8 @@ struct MedicationQuickLogSection: View {
                         .delete()
                         .execute(db)
                 }
-                reloadIntakesForSelectedDay()
+                NotificationCenter.default.post(name: .medicationIntakesDidChange, object: nil)
+                refreshData(force: true)
             } catch {
                 // ignore
             }
@@ -327,7 +307,7 @@ private struct ScheduledDoseRow: View {
     }
 }
 
-private struct AsNeededIntakeSheet: View {
+private struct AsNeededIntakeView: View {
     let medication: SQLiteMedication
     let defaultDate: Date
     var onSaved: () -> Void
@@ -361,7 +341,9 @@ private struct AsNeededIntakeSheet: View {
             .navigationTitle("Log Dose")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") {
+                        dismiss()
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { save() }
@@ -407,12 +389,18 @@ private struct AsNeededIntakeSheet: View {
             try database.write { db in
                 try SQLiteMedicationIntake.insert { intake }.execute(db)
             }
+            NotificationCenter.default.post(name: .medicationIntakesDidChange, object: nil)
             onSaved()
             dismiss()
         } catch {
             dismiss()
         }
     }
+}
+
+extension Notification.Name {
+    static let medicationsDidChange = Notification.Name("com.auralyst.medicationsDidChange")
+    static let medicationIntakesDidChange = Notification.Name("com.auralyst.medicationIntakesDidChange")
 }
 
 private extension Double {

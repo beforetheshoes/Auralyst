@@ -40,5 +40,24 @@ struct SQLiteMedicationIntake: Identifiable {
 }
 
 extension SQLiteMedicationIntake {
-    // Query helpers will be implemented once SQLiteData dependency is available
+    /// Returns a copy that applies the editable fields while preserving linkage metadata used by scheduling and sync flows.
+    func mergingEditableFields(
+        amount: Double?,
+        unit: String?,
+        timestamp: Date,
+        notes: String?
+    ) -> SQLiteMedicationIntake {
+        SQLiteMedicationIntake(
+            id: id,
+            medicationID: medicationID,
+            entryID: entryID,
+            scheduleID: scheduleID,
+            amount: amount,
+            unit: unit,
+            timestamp: timestamp,
+            scheduledDate: scheduledDate,
+            origin: origin,
+            notes: notes
+        )
+    }
 }

@@ -176,6 +176,7 @@ private struct DayDetailView: View {
     let medicationsByID: [UUID: SQLiteMedication]
 
     @State private var editingEntryID: UUID?
+    @State private var currentIntakes: [SQLiteMedicationIntake] = []
 
     var body: some View {
         List {
@@ -210,43 +211,76 @@ private struct DayDetailView: View {
             }
 
             Section(header: Text("Medications")) {
-                if intakes.isEmpty {
+                if currentIntakes.isEmpty {
                     Text("No medications logged.")
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(intakes) { intake in
+                    ForEach(currentIntakes) { intake in
                         let med = medicationsByID[intake.medicationID]
-                        HStack(alignment: .top) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(med?.name ?? "Medication")
-                                    .font(.subheadline)
-                                    .fontWeight(.semibold)
-                                HStack(spacing: 6) {
-                                    Text(intake.timestamp, style: .time)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    if let amount = intake.amount, let unit = intake.unit {
-                                        Text("\(amount.cleanAmount) \(unit)")
-                                            .font(.caption2)
+                        NavigationLink {
+                            MedicationIntakeEditorView(intakeID: intake.id)
+                        } label: {
+                            HStack(alignment: .top) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(med?.name ?? "Medication")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                    HStack(spacing: 6) {
+                                        Text(intake.timestamp, style: .time)
+                                            .font(.caption)
                                             .foregroundStyle(.secondary)
+                                        if let amount = intake.amount, let unit = intake.unit {
+                                            Text("\(amount.cleanAmount) \(unit)")
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                    if let notes = intake.notes, !notes.isEmpty {
+                                        Text(notes)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(3)
                                     }
                                 }
-                                if let notes = intake.notes, !notes.isEmpty {
-                                    Text(notes)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(3)
-                                }
+                                Spacer()
                             }
-                            Spacer()
+                            .padding(.vertical, 4)
                         }
-                        .padding(.vertical, 4)
                     }
                 }
             }
         }
         .navigationTitle(date.formatted(date: .abbreviated, time: .omitted))
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            currentIntakes = intakes
+            refreshIntakes()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .medicationIntakesDidChange)) { _ in
+            refreshIntakes()
+        }
+    }
+
+    private func refreshIntakes() {
+        @Dependency(\.defaultDatabase) var database
+        let bounds = dayBounds(for: date)
+        do {
+            let fetched = try database.read { db in
+                try SQLiteMedicationIntake
+                    .where { $0.timestamp >= bounds.start && $0.timestamp < bounds.end }
+                    .fetchAll(db)
+            }
+            currentIntakes = fetched
+        } catch {
+            currentIntakes = intakes
+        }
+    }
+
+    private func dayBounds(for date: Date) -> (start: Date, end: Date) {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: date)
+        let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start
+        return (start, end)
     }
 }
 

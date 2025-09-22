@@ -101,9 +101,7 @@ struct MedicationIntakeEditorView: View {
 
         Task {
             do {
-                let updatedIntake = SQLiteMedicationIntake(
-                    id: intake.id,
-                    medicationID: intake.medicationID,
+                let updatedIntake = intake.mergingEditableFields(
                     amount: amountValue,
                     unit: unit.isEmpty ? nil : unit,
                     timestamp: timestamp,
@@ -113,6 +111,8 @@ struct MedicationIntakeEditorView: View {
                 try dataStore.updateMedicationIntake(updatedIntake)
 
                 await MainActor.run {
+                    NotificationCenter.default.post(name: .medicationIntakesDidChange, object: nil)
+                    self.intake = updatedIntake
                     dismiss()
                 }
             } catch {
@@ -131,6 +131,7 @@ struct MedicationIntakeEditorView: View {
                 try dataStore.deleteMedicationIntake(intake)
 
                 await MainActor.run {
+                    NotificationCenter.default.post(name: .medicationIntakesDidChange, object: nil)
                     dismiss()
                 }
             } catch {

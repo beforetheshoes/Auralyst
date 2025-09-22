@@ -210,7 +210,19 @@ final class DataStore {
     func updateMedicationIntake(_ intake: SQLiteMedicationIntake) throws {
         do {
             try database.write { db in
-                try SQLiteMedicationIntake.update(intake).execute(db)
+                let recordToPersist: SQLiteMedicationIntake
+                if let existing = try SQLiteMedicationIntake.find(intake.id).fetchOne(db) {
+                    recordToPersist = existing.mergingEditableFields(
+                        amount: intake.amount,
+                        unit: intake.unit,
+                        timestamp: intake.timestamp,
+                        notes: intake.notes
+                    )
+                } else {
+                    recordToPersist = intake
+                }
+
+                try SQLiteMedicationIntake.update(recordToPersist).execute(db)
             }
             logger.info("Updated medication intake: \(intake.id)")
         } catch {

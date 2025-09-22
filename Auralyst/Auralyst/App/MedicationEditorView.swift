@@ -1,3 +1,4 @@
+import Foundation
 import SQLiteData
 import StructuredQueries
 import SwiftUI
@@ -239,6 +240,9 @@ struct MedicationEditorView: View {
         } catch {
             print("Failed to save medication: \(error)")
         }
+
+        NotificationCenter.default.post(name: .medicationsDidChange, object: nil)
+        NotificationCenter.default.post(name: .medicationIntakesDidChange, object: nil)
 
         dismiss()
     }
