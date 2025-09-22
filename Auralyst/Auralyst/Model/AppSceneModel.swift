@@ -1,62 +1,60 @@
-import CoreData
+import Foundation
+import SQLiteData
 import Observation
+import Dependencies
 
 @Observable final class AppSceneModel {
-    var primaryJournalID: NSManagedObjectID?
-    var sharedJournalIDs: [NSManagedObjectID] = []
+    var primaryJournalID: UUID?
+    var sharedJournalIDs: [UUID] = []
 
-    func fetchOrCreateJournal(in context: NSManagedObjectContext) -> Journal {
-        if let primaryJournalID,
-           let existing = try? context.existingObject(with: primaryJournalID) as? Journal {
-            return existing
-        }
+    private let dataStore = DataStore()
+    @ObservationIgnored @Dependency(\.journalShareResolver) private var shareResolver
 
-        let request = Journal.fetchRequest()
-        request.fetchLimit = 1
-        if let journal = try? context.fetch(request).first {
-            primaryJournalID = journal.objectID
-            return journal
-        }
-
-        let journal = Journal(context: context)
-        journal.id = UUID()
-        journal.createdAt = Date()
-        try? context.save()
-        primaryJournalID = journal.objectID
-        return journal
-    }
-
-    func refreshJournals(in context: NSManagedObjectContext) {
-        let request = Journal.fetchRequest()
-        if let journals = try? context.fetch(request) {
-            updatePrimaryAndShared(from: journals, context: context)
-        }
-    }
-
-    private func updatePrimaryAndShared(from journals: [Journal], context: NSManagedObjectContext) {
-        var candidatePrimary: Journal?
-        var sharedIDs: [NSManagedObjectID] = []
-
-        for journal in journals {
-            guard let store = journal.objectID.persistentStore else { continue }
-            if store.configurationName == "Shared" {
-                sharedIDs.append(journal.objectID)
-            } else if candidatePrimary == nil {
-                candidatePrimary = journal
+    func fetchOrCreateJournal() -> SQLiteJournal {
+        if let primaryJournalID {
+            if let existing = dataStore.fetchJournal(id: primaryJournalID) {
+                return existing
             }
         }
 
-        sharedJournalIDs = sharedIDs
+        let journals = dataStore.fetchJournals()
+        if let journal = journals.first {
+            primaryJournalID = journal.id
+            return journal
+        }
+
+        let journal = dataStore.createJournal()
+        primaryJournalID = journal.id
+        return journal
+    }
+
+    func refreshJournals() {
+        let journals = dataStore.fetchJournals()
+        updatePrimaryAndShared(from: journals)
+    }
+
+    private func updatePrimaryAndShared(from journals: [SQLiteJournal]) {
+        let ids = journals.map(\.id)
+        let sharedSet: Set<UUID>
+        do {
+            sharedSet = try shareResolver.sharedJournalIDs(ids)
+        } catch {
+            sharedSet = []
+        }
+
+        sharedJournalIDs = journals
+            .filter { sharedSet.contains($0.id) }
+            .map(\.id)
+
         if let currentID = primaryJournalID,
-           let existing = try? context.existingObject(with: currentID) as? Journal {
-            primaryJournalID = existing.objectID
+           journals.contains(where: { $0.id == currentID }) {
             return
         }
 
-        if let candidatePrimary {
-            primaryJournalID = candidatePrimary.objectID
-        } else if let anyJournal = journals.first {
-            primaryJournalID = anyJournal.objectID
+        if let nonShared = journals.first(where: { !sharedSet.contains($0.id) }) {
+            primaryJournalID = nonShared.id
+        } else if let fallback = journals.first {
+            primaryJournalID = fallback.id
         }
     }
 }

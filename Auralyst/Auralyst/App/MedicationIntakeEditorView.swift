@@ -1,14 +1,13 @@
-import CoreData
+import SQLiteData
 import SwiftUI
 
 struct MedicationIntakeEditorView: View {
-    let intakeID: NSManagedObjectID
+    let intakeID: UUID
 
-    @Environment(\.managedObjectContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(DataStore.self) private var dataStore
 
-    @FetchRequest private var intakeResults: FetchedResults<MedicationIntake>
-
+    @State private var intake: SQLiteMedicationIntake?
     @State private var amountValue: Double?
     @State private var unit: String = ""
     @State private var notes: String = ""
@@ -25,24 +24,11 @@ struct MedicationIntakeEditorView: View {
         return formatter
     }()
 
-    init(intakeID: NSManagedObjectID) {
-        self.intakeID = intakeID
-        _intakeResults = FetchRequest(
-            entity: MedicationIntake.entity(),
-            sortDescriptors: [],
-            predicate: NSPredicate(format: "SELF == %@", intakeID)
-        )
-    }
-
-    private var intake: MedicationIntake? {
-        intakeResults.first
-    }
-
     var body: some View {
         Group {
-            if let intake {
+            if intake != nil {
                 Form {
-                    Section(intake.medication?.name ?? "Medication") {
+                    Section("Medication") {
                         DatePicker(
                             "Logged",
                             selection: $timestamp,
@@ -66,18 +52,10 @@ struct MedicationIntakeEditorView: View {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cancel", action: { dismiss() })
                     }
-#if os(macOS)
-                    ToolbarItemGroup(placement: .bottomBar) {
-                        Spacer()
-                        Button("Save", action: save)
-                            .keyboardShortcut(.defaultAction)
-                    }
-#else
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Save", action: save)
                             .keyboardShortcut(.defaultAction)
                     }
-#endif
                 }
             } else {
                 VStack(spacing: 12) {
@@ -104,77 +82,74 @@ struct MedicationIntakeEditorView: View {
     }
 
     private func loadIfNeeded() {
-        guard didLoad == false, let intake else { return }
+        guard !didLoad else { return }
         didLoad = true
 
-        amountValue = intake.amountValue.map { NSDecimalNumber(decimal: $0).doubleValue }
-        unit = intake.unit ?? ""
-        notes = intake.notes ?? ""
-        timestamp = intake.timestamp ?? Date()
+        // Load intake from dataStore
+        intake = dataStore.fetchMedicationIntake(id: intakeID)
+
+        if let intake = intake {
+            amountValue = intake.amount
+            unit = intake.unit ?? ""
+            notes = intake.notes ?? ""
+            timestamp = intake.timestamp
+        }
     }
 
     private func save() {
         guard let intake else { return }
-        context.perform {
-            intake.timestamp = timestamp
 
-            if let amountValue {
-                let decimalAmount = Decimal(amountValue)
-                intake.amount = NSDecimalNumber(decimal: decimalAmount)
-            } else {
-                intake.amount = nil
-            }
-
-            let trimmedUnit = unit.trimmingCharacters(in: .whitespacesAndNewlines)
-            intake.unit = trimmedUnit.isEmpty ? nil : trimmedUnit
-
-            let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-            intake.notes = trimmedNotes.isEmpty ? nil : trimmedNotes
-
-            intake.medication?.updatedAt = Date()
-
+        Task {
             do {
-                try context.save()
-                dismiss()
+                let updatedIntake = SQLiteMedicationIntake(
+                    id: intake.id,
+                    medicationID: intake.medicationID,
+                    amount: amountValue,
+                    unit: unit.isEmpty ? nil : unit,
+                    timestamp: timestamp,
+                    notes: notes.isEmpty ? nil : notes
+                )
+
+                try dataStore.updateMedicationIntake(updatedIntake)
+
+                await MainActor.run {
+                    dismiss()
+                }
             } catch {
-                context.rollback()
-                errorMessage = error.localizedDescription
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                }
             }
         }
     }
 
     private func delete() {
         guard let intake else { return }
-        context.perform {
-            context.delete(intake)
+
+        Task {
             do {
-                try context.save()
-                dismiss()
+                try dataStore.deleteMedicationIntake(intake)
+
+                await MainActor.run {
+                    dismiss()
+                }
             } catch {
-                context.rollback()
-                errorMessage = error.localizedDescription
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                }
             }
         }
     }
 }
 
 #Preview("Medication Intake Editor") {
-    let controller = PersistenceController.preview
-    let context = controller.container.viewContext
-    PreviewSeed.populateIfNeeded(context: context)
+    withPreviewDataStore { dataStore in
+        let journal = dataStore.createJournal()
+        let medication = dataStore.createMedication(for: journal, name: "Ibuprofen")
+        let intake = try! dataStore.createMedicationIntake(for: medication, amount: 200, unit: "mg")
 
-    let request = MedicationIntake.fetchRequest()
-    request.fetchLimit = 1
-    request.sortDescriptors = [NSSortDescriptor(keyPath: \MedicationIntake.timestamp, ascending: false)]
-    let intake = try? context.fetch(request).first
-
-    return NavigationStack {
-        if let intake {
-            MedicationIntakeEditorView(intakeID: intake.objectID)
-        } else {
-            Text("No sample intake available")
-                .foregroundStyle(.secondary)
+        NavigationStack {
+            MedicationIntakeEditorView(intakeID: intake.id)
         }
     }
-    .environment(\.managedObjectContext, context)
 }

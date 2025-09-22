@@ -38,13 +38,5 @@ enum MedicationWeekday: Int, CaseIterable, Identifiable {
     }
 }
 
-extension MedicationSchedule {
-    var weekdays: [MedicationWeekday] {
-        MedicationWeekday.days(from: daysOfWeekMask)
-    }
-
-    func includes(weekday: MedicationWeekday) -> Bool {
-        let bit = Int16(1 << ((weekday.rawValue - 1) % 7))
-        return daysOfWeekMask & bit == bit
-    }
-}
+// MARK: - MedicationSchedule extension removed
+// This will be implemented when medication scheduling is added to SQLiteData models

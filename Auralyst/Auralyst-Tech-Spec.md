@@ -1,25 +1,19 @@
 # Auralyst — Technical Implementation Spec
 
-
-
 **One-liner:** Auralyst keeps the log, spots the patterns, and nudges when it matters.
 
 - **Platforms:** iOS (primary), macOS (optional), watchOS (optional)
 - **UI:** SwiftUI
-- **Persistence & Sync:** Core Data + CloudKit (`NSPersistentCloudKitContainer`)
+- **Persistence & Sync:** SQLiteData + CloudKit SyncEngine
 - **Collaboration:** CloudKit zone sharing (read/write) between iCloud users
 - **Offline:** Full offline capability; eventual cloud sync
-- **Privacy:** iCloud (Apple ID auth), on-device Core Data store
-
-
+- **Privacy:** iCloud (Apple ID auth), on-device SQLite store
 
 ---
 
-
-
 ## 0. Branding & Visual System
 
-**Name:** Auralyst
+**Name:** Auralyst  
 **Tone:** Calm, capable, quietly helpful (assistant vibe, not AI-forward)
 
 **Palette**
@@ -38,8 +32,7 @@
 
 **Icon**
 
-- “Quiet Trendline”: rising line with two round nodes (owner + collaborator).  
-- SVGs provided (glyph, light/dark tiles, favicon). Keep line thin; grid subtle.
+- “Quiet Trendline”: rising line with two round nodes (owner + collaborator). Keep line thin; grid subtle.
 
 **Microcopy**
 
@@ -47,466 +40,154 @@
 - Insight toast: “Noticed 3 mornings this week with level ≥7. Tag wake time?”
 - Share CTA: “Invite a partner to add notes. You stay in control.”
 
+---
 
+## 1. Persistence Strategy (SQLiteData + CloudKit SyncEngine)
+
+The production app now runs entirely on **SQLiteData** backed by **GRDB** with CloudKit mirroring provided by `SyncEngine`. We chose this stack over Core Data/SwiftData because it gives us:
+
+- Type-safe SQL via `@Table` models and StructuredQueries.
+- First-class CloudKit zone sharing with direct access to CKRecord metadata.
+- Predictable migrations defined in `Database.swift`.
+- Great performance for growing symptom logs.
+
+SwiftData still lacks multi-account collaboration and Core Data served only as an interim bridge. Historical guidance remains in version control for reference.
 
 ---
 
+## 2. Data Model (SQLiteData)
 
+Models live in `Auralyst/Models` and conform to SQLiteData’s expectations.
 
-## 1. Why Core Data + CloudKit (not SwiftData)
+### `SQLiteJournal`
+- Root share boundary, minimal columns (`id`, `createdAt`).
+- `shareableTables` extension informs the sync engine which related tables to publish.
 
-**We choose Core Data + CloudKit** because we need **multi-user sharing across iCloud accounts** with read/write collaboration.
+### `SQLiteSymptomEntry`
+- Captures timestamp, severity metrics, menstruation flag, free-form text, and sentiment placeholders.
+- References the parent journal via `journalID`.
 
-- **SwiftData (iOS 17+)**: great for single-user iCloud sync (same Apple ID), but **no first-class support for collaborative sharing** (CKShare/zone sharing) across different iCloud accounts. Also lacks the mature tooling for multi-store setups (private + shared).
-- **Core Data + `NSPersistentCloudKitContainer`**:
-  - Proven, production-ready CloudKit mirroring.
-  - Supports **two stores**: user’s **private** DB and **shared** DB (records shared with the user).
-  - Built-in **CloudKit zone sharing** (read/write participants), using `CKShare`.
-  - **Offline-first** by design with local persistence; background mirroring to iCloud.
-  - **Notifications & history** for merging remote changes safely.
+### `SQLiteMedication`
+- Stores medication metadata and default dosage hints.
+- Timestamp columns support change auditing.
 
-Result: secure, Apple-native, no separate auth or servers, and collaborators see updates with low latency (eventual consistency).
+### `SQLiteMedicationIntake`
+- Represents individual medication events.
+- Optional links to symptom entries and future schedules.
 
+### `SQLiteCollaboratorNote`
+- Keeps collaborator input in a separate record type to reduce merge conflicts.
 
+### `SQLiteMedicationSchedule`
+- Encodes interval/cadence metadata for upcoming reminders.
 
----
-
-
-
-## 2. Data Model (Core Data)
-
-Create a Core Data model `Auralyst.xcdatamodeld` with these entities:
-
-### `Journal` (the shareable root)
-
-- `id: UUID` (indexed, unique)
-- `createdAt: Date`
-- Relationships:
-  - `entries: [SymptomEntry]` (to-many, cascade)
-  - `collabNotes: [CollaboratorNote]` (to-many, cascade)
-
-> **Why a root?** Sharing the `Journal` shares its **entire object graph** (entries + notes) via CloudKit zone sharing. It gives one “thing” to share/manage.
-
-### `SymptomEntry`
-
-- `id: UUID`
-- `timestamp: Date` (default: now)
-- Severity fields (choose one of two patterns):
-  - **Single overall severity:** `severity: Int16 (1–10)`
-  - **Per-symptom severities:** `headache: Int16`, `nausea: Int16`, `anxiety: Int16` (nullable if unused)
-- `medication: String?` (free text, or normalize later)
-- `note: String?`
-- Rel:
-  - `journal: Journal` (to-one, required)
-
-### `CollaboratorNote`
-
-- `id: UUID`
-- `timestamp: Date` (default: now)
-- `text: String`
-- `authorName: String?` (optional display)
-- `entryRef: SymptomEntry?` (optional: note tied to a specific entry)
-- Rel:
-  - `journal: Journal` (to-one, required)
-
-> Keep the collaborator’s notes **distinct** so they never overwrite the owner’s log; show them in a parallel lane.
-
-
+When adding new tables, mirror the style above and extend both migrations and sync bootstrap lists.
 
 ---
 
+## 3. Database & Sync Bootstrap
 
-
-## 3. Core Data + CloudKit Stack
-
-### 3.1 Entitlements & Capabilities
-
-- Enable **iCloud** with **CloudKit** in all targets (iOS/macOS/watchOS).
-- Use **the same CloudKit container** (e.g., `iCloud.com.yourteam.auralyst`).
-- Background modes: **Remote notifications** (for push-driven sync).
-
-### 3.2 Persistent Container
-
-- Use **`NSPersistentCloudKitContainer`**.
-- Configure **two store descriptions**:
-  - Private store → `databaseScope = .private`
-  - Shared store → `databaseScope = .shared`
-- Enable:
-  - `NSPersistentHistoryTrackingKey = true`
-  - `NSPersistentStoreRemoteChangeNotificationPostOptionKey = true`
-
-**Example (`Persistence.swift`):**
+- `Persistence/Database.swift` configures GRDB, registers migrations, and attaches the CloudKit metadata store (`attachMetadatabase`).
+- `SQLiteDataDocs/DependencyValues+Bootstrap.swift` exposes `bootstrapDatabase()` to assign `defaultDatabase` and configure `SyncEngine` with shareable tables.
+- `AuralystApp` calls `prepareDependencies` in `init` to ensure previews/tests receive a deterministic database environment.
+- Debug builds enable GRDB tracing for insight into SQL/CloudKit operations.
 
 ```swift
-import CoreData
-import CloudKit
+try prepareDependencies {
+    try $0.bootstrapDatabase()
+}
 
-final class Persistence {
-    static let shared = Persistence()
+@Dependency(\.defaultDatabase) var database
+@Dependency(\.defaultSyncEngine) var syncEngine
+```
 
-    let container: NSPersistentCloudKitContainer
-    private(set) var privateStore: NSPersistentStore!
-    private(set) var sharedStore: NSPersistentStore!
+Any persistence change must:
+1. Add/alter the migration in `Database.swift`.
+2. Update associated `@Table` structs.
+3. Include new entities when bootstrapping the sync engine.
 
-    private init(inMemory: Bool = false) {
-        container = NSPersistentCloudKitContainer(name: "Auralyst")
+---
 
-        // URLs
-        let storeDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let privateURL = storeDir.appendingPathComponent("Auralyst-Private.sqlite")
-        let sharedURL  = storeDir.appendingPathComponent("Auralyst-Shared.sqlite")
+## 4. Sharing Workflow (SyncEngine)
 
-        // Private store
-        let privateDesc = NSPersistentStoreDescription(url: privateURL)
-        privateDesc.configuration = "Default" // if you use configurations
-        privateDesc.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
-        privateDesc.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
+- `ShareManagementView` queries `SyncMetadata` to determine whether a journal is shared and surfaces CloudKit actions.
+- `syncEngine.share(record:)` returns a `SharedRecord` that SwiftUI presents in a share sheet—no UIKit controller required.
+- Collaborator acceptance happens automatically through CloudKit once the share link is opened.
+- Revoke/manage access by calling the sync engine again; it will hand back fresh metadata for the UI.
 
-        let privateOptions = NSPersistentCloudKitContainerOptions(containerIdentifier: "iCloud.com.yourteam.auralyst")
-        privateOptions.databaseScope = .private
-        privateDesc.cloudKitContainerOptions = privateOptions
+Future share-aware features should read from `SyncMetadata` rather than caching assumptions locally.
 
-        // Shared store
-        let sharedDesc = NSPersistentStoreDescription(url: sharedURL)
-        sharedDesc.configuration = "Default"
-        sharedDesc.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
-        sharedDesc.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
+---
 
-        let sharedOptions = NSPersistentCloudKitContainerOptions(containerIdentifier: "iCloud.com.yourteam.auralyst")
-        sharedOptions.databaseScope = .shared
-        sharedDesc.cloudKitContainerOptions = sharedOptions
+## 5. SwiftUI App Structure
 
-        container.persistentStoreDescriptions = [privateDesc, sharedDesc]
+- `AuralystApp` places `AppSceneModel` and `DataStore` into the environment. `DataStore` wraps GRDB transactions on the main actor.
+- Views rely on `@FetchAll`, `@FetchOne`, and `@Fetch` to stream database changes.
+- Mutations (journal creation, symptom logging, medication edits, collaborator notes) live on `DataStore` so they can be reused across platforms.
+- Helper models (`EntryFormModel`, etc.) are `@Observable` to work with SwiftUI’s modern observation.
 
-        container.loadPersistentStores { [weak self] desc, error in
-            guard let self = self else { return }
-            if let error = error { fatalError("Persistent store load failed: \(error)") }
-            if desc.cloudKitContainerOptions?.databaseScope == .private { self.privateStore = self.container.persistentStoreCoordinator.persistentStore(for: desc.url!) }
-            if desc.cloudKitContainerOptions?.databaseScope == .shared  { self.sharedStore  = self.container.persistentStoreCoordinator.persistentStore(for: desc.url!) }
-            self.container.viewContext.automaticallyMergesChangesFromParent = true
-            self.container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
-        }
-
-        // Optional (dev only): create CK schema
-        // try? container.initializeCloudKitSchema(options: [])
-    }
-
-    func newBackgroundContext() -> NSManagedObjectContext {
-        let ctx = container.newBackgroundContext()
-        ctx.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
-        ctx.automaticallyMergesChangesFromParent = true
-        return ctx
-    }
+```swift
+struct ContentView: View {
+    @FetchAll var journals: [SQLiteJournal]
+    @Environment(DataStore.self) private var store
+    // ...
 }
 ```
 
+macOS and watchOS targets can reuse the same dependencies when revived—avoid reintroducing legacy `@StateObject`/Combine patterns.
 
+---
 
-### **3.3 Filtering by Store (Private vs Shared)**
+## 6. Insights & Trends
 
-When fetching, you can target a specific store using affectedStores.
+- Use SQLiteData aggregate queries to power Swift Charts (rolling averages, daily aggregates, medication correlation windows).
+- Keep insights subtle; surface amber cues only when heuristics meet confidence thresholds.
+- Ensure derived queries remain performant by indexing relevant columns during migration updates.
 
-```
-func fetchJournals(in store: NSPersistentStore?, context: NSManagedObjectContext) throws -> [Journal] {
-    let req: NSFetchRequest<Journal> = Journal.fetchRequest()
-    if let store = store {
-        req.affectedStores = [store]
-    }
-    return try context.fetch(req)
-}
-```
+---
 
-- Owner device: show the **private** journal (and any inbound **shared** journals if they’ve joined others’ shares).
-- Collaborator device: typically show the **shared** journal.
+## 7. Privacy & Security
 
+- Data resides in the on-device SQLite store; CloudKit mirrors encrypt data in transit and at rest.
+- Zone sharing is explicit and revocable. Share actions live in `ShareManagementView` for consistency.
+- The app remains fully functional offline; queue writes locally and allow CloudKit to catch up.
+- Export flows (CSV/JSON) must run locally and request positive confirmation before leaving the device.
 
+---
 
-### **3.4 Remote Change Handling**
+## 8. Testing Plan
 
-Listen for NSPersistentStoreRemoteChange and merge.
+- Lead with TDD: write failing tests, implement the feature, then rerun.
+- Execute automated suites via `XCodeBuildMCP` targeting the iOS 18 simulator (`scheme Auralyst`).
+- Expand unit coverage to include:
+  - Journal lifecycle and share metadata queries.
+  - Symptom entry CRUD with chronological ordering guarantees.
+  - Medication + intake flows, including deletion cascades.
+  - Collaborator note creation/readback.
+  - Sync engine integration with mocked CloudKit responses.
+- UI tests should smoke the primary navigation stack, add-entry form, medication quick log, and sharing surface.
+- Add offline test scenarios by toggling simulator networking during the automated run.
 
-```
-extension Persistence {
-    func startObservingRemoteChanges() {
-        NotificationCenter.default.addObserver(
-            forName: .NSPersistentStoreRemoteChange,
-            object: container.persistentStoreCoordinator,
-            queue: .main
-        ) { _ in
-            // Optionally process history here if you need granular handling
-            self.container.viewContext.perform {
-                self.container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
-                // Minimal merge if using automaticallyMergesChangesFromParent
-            }
-        }
-    }
-}
-```
+---
 
-> For advanced flows, process NSPersistentHistoryTransaction entries to drive UI badges/cues.
+## 9. Edge Cases & Operational Notes
 
+- CloudKit is eventually consistent; provide optimistic UI with background refresh hooks.
+- Resolve write conflicts via last-write-wins on scalar fields and separate records for multi-author content.
+- Keep migrations idempotent—prefer additive changes and backfill scripts instead of destructive operations.
+- Maintain accessibility essentials (Dynamic Type, VoiceOver labels, minimum contrast ratios) with every UI iteration.
 
+---
 
-------
+## 10. Roadmap (Later)
 
+- Finalize medication schedules and reminder notifications using `SQLiteMedicationSchedule`.
+- HealthKit import/export once privacy review completes.
+- Insight engine for spotting severity / medication correlations.
+- Apple Intelligence summaries after on-device evaluation.
 
+---
 
-## **4. Sharing (CloudKit Zone Sharing)**
+## Appendix: Historical Core Data Migration
 
-
-
-### **4.1 Initiate Share (Owner)**
-
-- Create or locate the owner’s Journal (1 per user).
-- Use NSPersistentCloudKitContainer.share(_:to:) to produce a CKShare.
-- Present UICloudSharingController so the user can invite (Messages/Email/AirDrop).
-- Set permission to **allow read/write**.
-
-
-
-```
-import UIKit
-import CloudKit
-import CoreData
-
-final class ShareController: NSObject, UICloudSharingControllerDelegate {
-
-    let container = Persistence.shared.container
-
-    func presentShare(for journal: Journal, from presenter: UIViewController) {
-        let context = container.viewContext
-        container.share([journal], to: nil) { share, ccContainer, error in
-            if let error = error { print("Share error: \(error)"); return }
-
-            guard let share = share, let ckContainer = ccContainer else { return }
-            // Optional: set title
-            share[CKShare.SystemFieldKey.title] = "Auralyst Journal" as CKRecordValue
-
-            let sharingVC = UICloudSharingController(share: share, container: ckContainer)
-            sharingVC.modalPresentationStyle = .formSheet
-            sharingVC.delegate = self
-            DispatchQueue.main.async { presenter.present(sharingVC, animated: true) }
-        }
-    }
-
-    // UICloudSharingControllerDelegate
-    func itemTitle(for csc: UICloudSharingController) -> String? { "Auralyst Journal" }
-    func cloudSharingController(_ csc: UICloudSharingController, failedToSaveShareWithError error: Error) {
-        print("Failed to save share: \(error)")
-    }
-    func cloudSharingControllerDidSaveShare(_ csc: UICloudSharingController) { print("Share saved") }
-    func cloudSharingControllerDidStopSharing(_ csc: UICloudSharingController) { print("Stopped sharing") }
-}
-```
-
-
-
-### **4.2 Accept Share (Collaborator)**
-
-- Implement application(_:userDidAcceptCloudKitShareWith:) in App Delegate.
-- Call container.acceptShareInvitations(from:into:) to persist into the **shared** store.
-
-
-
-```
-import UIKit
-import CloudKit
-
-@main
-class AppDelegate: UIResponder, UIApplicationDelegate {
-    func application(_ application: UIApplication,
-                     userDidAcceptCloudKitShareWith metadata: CKShare.Metadata) {
-        let persistence = Persistence.shared
-        // Persist into the shared store
-        persistence.container.acceptShareInvitations(from: [metadata], into: persistence.sharedStore) { _, error in
-            if let error = error { print("Accept share error: \(error)") }
-            else { print("Share accepted into shared store") }
-        }
-    }
-}
-```
-
-**Info.plist**
-
-- Ensure **CloudKit** entitlements enabled.
-- Add CKSharingSupported (Boolean) in Info.plist (for best compatibility when using UICloudSharingController).
-- Deep link handling is automatic via CloudKit share URLs.
-
-
-
-### **4.3 Permissions**
-
-- Use UICloudSharingController to set **Allow Editing** (read/write) for invitees.
-- Owner can manage participants or stop sharing via the same controller.
-
-
-
-### **4.4 Data Flow**
-
-- Owner logs entries → mirrored to **private** DB.
-- Owner shares Journal → a **share zone** is created; all related objects included.
-- Collaborator accepts → objects appear in **shared** DB on collaborator device.
-- Collaborator adds CollaboratorNote (or comments on entries) → writes to share zone → owner receives via remote change.
-
-
-
-> Sync is **eventual**; not guaranteed real-time. Typically fast.
-
-
-
-------
-
-
-
-## **5. SwiftUI App Structure**
-
-
-
-### **5.1 App Entry**
-
-- Inject container.viewContext into environment.
-- Start observing remote changes.
-
-
-
-```
-@main
-struct AuralystApp: App {
-    let persistence = Persistence.shared
-
-    init() { persistence.startObservingRemoteChanges() }
-
-    var body: some Scene {
-        WindowGroup {
-            RootView()
-                .environment(\.managedObjectContext, persistence.container.viewContext)
-        }
-    }
-}
-```
-
-
-
-### **5.2 Views (iOS)**
-
-- **Home/List:** Today + Recent Entries (@FetchRequest on SymptomEntry, grouped by day).
-- **Add Entry:** Fast form: severity (1–10), meds (picker/text), note (TextEditor), save.
-- **Detail:** Full entry detail; show CollaboratorNote items (if any).
-- **Trends:** Swift Charts: line of daily max/avg severity; filters (7/30/90 days).
-- **Share:** Button that calls ShareController.presentShare.
-
-
-
-**Example Add Entry Save**
-
-```
-func addEntry(severity: Int, medication: String?, note: String?) {
-    let ctx = Persistence.shared.container.viewContext
-    ctx.perform {
-        // Ensure a Journal exists (create once, store its objectID)
-        let journal = fetchOrCreateJournal(in: ctx)
-        let entry = SymptomEntry(context: ctx)
-        entry.id = UUID()
-        entry.timestamp = Date()
-        entry.severity = Int16(severity)
-        entry.medication = medication
-        entry.note = note
-        entry.journal = journal
-        try? ctx.save()
-    }
-}
-```
-
-**Collaborator Note**
-
-```
-func addCollaboratorNote(text: String, for entry: SymptomEntry?) {
-    let ctx = Persistence.shared.container.viewContext
-    ctx.perform {
-        guard let journal = entry?.journal ?? fetchSharedJournal(in: ctx) else { return }
-        let note = CollaboratorNote(context: ctx)
-        note.id = UUID()
-        note.timestamp = Date()
-        note.text = text
-        note.entryRef = entry
-        note.journal = journal
-        try? ctx.save()
-    }
-}
-```
-
-
-
-### **5.3 macOS & watchOS**
-
-- **macOS:** Use NavigationSplitView. Same Core Data stack; identical model.
-- **watchOS:** Minimal Add Entry (severity picker + dictation note). Use same CloudKit container; sync when network is available.
-
-
-
-------
-
-
-
-## **6. Insights & Trends**
-
-- Build **Charts** (Swift Charts) for:
-  - Rolling **7-day** average severity
-  - **Hourly heatmap** (if you later record time-of-day or triggers)
-  - **Medication effect** (severity before/after taking)
-- Keep insights **quiet**: only surface amber cues when thresholds/trends are meaningful.
-
-
-
-------
-
-
-
-## **7. Privacy & Security**
-
-- Data is stored locally in Core Data, mirrored to the user’s iCloud container.
-- Sharing uses CloudKit **zone sharing** with explicit invitations.
-- No third-party servers; no extra logins.
-- Offer in-app export (CSV/Markdown) for clinical visits if desired.
-
-
-
-------
-
-
-
-## **8. Testing Plan**
-
-- **Two iCloud accounts**, two devices:
-  1. Owner creates entries → verify iCloud sync across their devices.
-  2. Owner shares Journal → collaborator accepts link.
-  3. Collaborator sees entries in shared store → adds a CollaboratorNote.
-  4. Owner device receives remote change → note appears; conflict-free.
-- **Offline tests:** add/edit offline; changes sync on reconnection.
-- **Revocation:** stop sharing; verify shared data is removed on collaborator’s device.
-
-
-
-------
-
-
-
-## **9. Edge Cases & Notes**
-
-- **Conflicts:** Rare with separate CollaboratorNote; default merge policy suffices. For simultaneous edits to the same field, last writer wins.
-- **Backups:** CloudKit + local Core Data store; consider local export for reassurance.
-- **Migrations:** Use light-weight migrations; keep schema simple.
-- **Accessibility:** Maintain ≥ 4.5:1 contrast; Dynamic Type; VoiceOver labels for icons.
-
-
-
-------
-
-
-
-## **10. Roadmap (Later)**
-
-- Trigger tagging (sleep, hydration, caffeine, weather).
-- HealthKit opt-in (headache occurrences if applicable).
-- Insight rules (transparent; explainable, not AI-forward).
-- Optional Apple Intelligence summaries when confident.
+The legacy Core Data + `NSPersistentCloudKitContainer` implementation has been removed. Consult Git history (`git show origin/core-data-era -- Auralyst-Tech-Spec.md`) only when auditing historical CloudKit data. All new work must follow the SQLiteData architecture described above.

@@ -1,243 +1,123 @@
-import CoreData
 import SwiftUI
+import SQLiteData
+import Dependencies
 
-struct MedicationsView: View {
-    enum EditorMode: Identifiable {
-        case create
-        case edit(NSManagedObjectID)
+enum EditorMode: Identifiable {
+    case create
+    case edit(UUID)
 
-        var id: String {
-            switch self {
-            case .create: return "create"
-            case .edit(let id): return id.uriRepresentation().absoluteString
-            }
+    var id: String {
+        switch self {
+        case .create: return "create"
+        case .edit(let id): return "edit-\(id)"
         }
     }
+}
 
-    let journalID: NSManagedObjectID
-
-    @Environment(\.managedObjectContext) private var context
+struct MedicationsView: View {
+    let journal: SQLiteJournal
     @Environment(\.dismiss) private var dismiss
 
-    @FetchRequest private var medications: FetchedResults<Medication>
-    @State private var editorMode: EditorMode?
+    @FetchAll var medications: [SQLiteMedication]
 
-    init(journalID: NSManagedObjectID) {
-        self.journalID = journalID
-        _medications = FetchRequest(
-            entity: Medication.entity(),
-            sortDescriptors: [
-                NSSortDescriptor(keyPath: \Medication.isAsNeeded, ascending: true),
-                NSSortDescriptor(keyPath: \Medication.createdAt, ascending: true)
-            ],
-            predicate: NSPredicate(format: "journal == %@", journalID),
-            animation: .default
-        )
+    @State private var showingAddMedication = false
+    @State private var medicationToEdit: SQLiteMedication?
+
+    init(journal: SQLiteJournal) {
+        self.journal = journal
+        self._medications = FetchAll(SQLiteMedication.where { $0.journalID == journal.id })
     }
+
+    @State private var editorMode: EditorMode?
 
     var body: some View {
         NavigationStack {
             List {
                 if medications.isEmpty {
-                    VStack(spacing: 12) {
-                        Text("No medications yet")
-                            .font(.headline)
-                            .foregroundStyle(Color.ink)
-                        Text("Add scheduled or as-needed medications to quick-log doses and share trends.")
-                            .multilineTextAlignment(.center)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 32)
-                } else {
-                    Section("Scheduled") {
-                        let scheduled = medications.filter { $0.isAsNeeded == false }
-                        if scheduled.isEmpty {
-                            Text("No scheduled medications yet.")
-                                .foregroundStyle(.secondary)
-                        } else {
-                            ForEach(scheduled, id: \.objectID) { medication in
-                                MedicationRow(medication: medication) {
-                                    editorMode = .edit(medication.objectID)
-                                }
-                                .swipeActions {
-                                    Button("Delete", role: .destructive) {
-                                        deleteMedication(medication)
-                                    }
-                                    Button("Edit") {
-                                        editorMode = .edit(medication.objectID)
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    Section {
+                        VStack(spacing: 12) {
+                            Text("No medications yet")
+                                .font(.headline)
+                                .foregroundColor(.secondary)
 
-                    Section("As Needed") {
-                        let asNeeded = medications.filter { $0.isAsNeeded == true }
-                        if asNeeded.isEmpty {
-                            Text("No as-needed medications yet.")
-                                .foregroundStyle(.secondary)
-                        } else {
-                            ForEach(asNeeded, id: \.objectID) { medication in
-                                MedicationRow(medication: medication) {
-                                    editorMode = .edit(medication.objectID)
-                                }
-                                .swipeActions {
-                                    Button("Delete", role: .destructive) {
-                                        deleteMedication(medication)
-                                    }
-                                    Button("Edit") {
-                                        editorMode = .edit(medication.objectID)
-                                    }
-                                }
-                            }
+                            Text("Add your first medication to start tracking doses and schedules.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
                         }
+                        .padding(.vertical)
+                    }
+                } else {
+                    ForEach(medications) { medication in
+                        medicationRow(medication)
                     }
                 }
             }
             .navigationTitle("Medications")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Done", action: { dismiss() })
+                    Button("Done") { dismiss() }
                 }
                 ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        editorMode = .create
-                    } label: {
-                        Label("Add", systemImage: "plus")
-                    }
+                    Button("Add") { editorMode = .create }
                 }
             }
             .sheet(item: $editorMode) { mode in
-                MedicationEditorView(mode: mode, journalID: journalID)
+                switch mode {
+                case .create:
+                    MedicationEditorView(journalID: journal.id)
+                case .edit(let medicationID):
+                    MedicationEditorView(journalID: journal.id, medicationID: medicationID)
+                }
             }
         }
     }
 
-    private func deleteMedication(_ medication: Medication) {
-        context.delete(medication)
-        try? context.save()
+    private func medicationRow(_ medication: SQLiteMedication) -> some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(medication.name)
+                    .font(.headline)
+
+                // Amount + unit
+                if let amount = medication.defaultAmount, let unit = medication.defaultUnit {
+                    Text("\(amount.description) \(unit)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                // Type: As Needed or Scheduled
+                Text((medication.isAsNeeded ?? false) ? "As Needed" : "Scheduled")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+
+                // Notes if present
+                if let notes = medication.notes, !notes.isEmpty {
+                    Text(notes)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                }
+            }
+
+            Spacer()
+
+            Button("Edit") {
+                editorMode = .edit(medication.id)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(.vertical, 2)
     }
+
 }
 
-private struct MedicationRow: View {
-    let medication: Medication
-    let onEdit: () -> Void
+// MedicationEditorView is now in its own file
 
-    var body: some View {
-        Button(action: onEdit) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text(medication.name ?? "Untitled")
-                        .font(.headline)
-                        .foregroundStyle(Color.ink)
-                    if medication.isAsNeeded == true {
-                        CapsuleLabel(text: "As Needed")
-                    }
-                }
-
-                if let useCase = medication.useCaseLabel {
-                    Text(useCase)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.brandAccent)
-                }
-
-                if medication.isAsNeeded == true {
-                    if let amount = medication.defaultAmountValue {
-                        Text("Default: \(formatted(amount)) \(medication.defaultUnit ?? "")")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    } else if let unit = medication.defaultUnit, unit.isEmpty == false {
-                        Text(unit)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    let schedules = medication.scheduleList
-                    if schedules.isEmpty {
-                        Text("No active schedule")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(schedules, id: \.objectID) { schedule in
-                            Text(scheduleSummary(for: schedule))
-                                .font(.subheadline)
-                                .foregroundStyle(schedule.isActive ? .secondary : .tertiary)
-                        }
-                    }
-                }
-            }
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func formatted(_ amount: Decimal) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.maximumFractionDigits = 2
-        return formatter.string(from: amount.nsDecimalNumber) ?? "\(amount)"
-    }
-
-    private func scheduleSummary(for schedule: MedicationSchedule) -> String {
-        let time = scheduleTime(schedule)
-        let amount = schedule.amountValue ?? schedule.medication?.defaultAmountValue
-        let unit = schedule.unit ?? schedule.medication?.defaultUnit ?? ""
-        var components: [String] = []
-        if let label = schedule.label, label.isEmpty == false {
-            components.append(label)
-        }
-        components.append(time)
-        if let amount {
-            let formattedAmount = formatted(amount)
-            if unit.isEmpty {
-                components.append(formattedAmount)
-            } else {
-                components.append("\(formattedAmount) \(unit)")
-            }
-        } else if unit.isEmpty == false {
-            components.append(unit)
-        }
-        components.append(cadenceDescription(for: schedule))
-        return components.joined(separator: " • ")
-    }
-
-    private func scheduleTime(_ schedule: MedicationSchedule) -> String {
-        var comps = DateComponents()
-        comps.hour = Int(schedule.hour)
-        comps.minute = Int(schedule.minute)
-        let calendar = Calendar.current
-        let date = calendar.date(from: comps) ?? Date()
-        return date.formatted(.dateTime.hour().minute())
-    }
-
-    private func cadenceDescription(for schedule: MedicationSchedule) -> String {
-        switch schedule.cadenceValue {
-        case .daily:
-            return "Daily"
-        case .weekly, .custom:
-            let days = schedule.weekdays
-            if days.isEmpty {
-                return "Weekly"
-            }
-            let names = days.map { $0.shortName }
-            return names.joined(separator: " ")
-        case .interval:
-            let interval = max(Int(schedule.interval), 1)
-            return "Every \(interval) day\(interval == 1 ? "" : "s")"
-        }
-    }
-}
-
-private struct CapsuleLabel: View {
-    let text: String
-
-    var body: some View {
-        Text(text.uppercased())
-            .font(.caption.bold())
-            .padding(.horizontal, 8)
-            .padding(.vertical, 2)
-            .background(Color.brandAccent.opacity(0.15), in: Capsule())
+#Preview {
+    withPreviewDataStore { _ in
+        MedicationsView(journal: SQLiteJournal())
     }
 }

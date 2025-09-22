@@ -1,354 +1,436 @@
-import CoreData
+import SQLiteData
+import StructuredQueries
 import SwiftUI
+import Dependencies
 
 struct MedicationQuickLogSection: View {
-    let journalID: NSManagedObjectID
+    let journalID: UUID
     let manageAction: () -> Void
-    let onLogAsNeeded: (MedicationTodayModel.AsNeededItem) -> Void
     let loggingError: String?
-    let refreshToken: Int
 
-    @Environment(\.managedObjectContext) private var context
+    @Environment(DataStore.self) private var dataStore
 
-    @State private var model: MedicationTodayModel
-    @State private var selectedDay: Date
+    @State private var medications: [SQLiteMedication] = []
+    @State private var schedulesByMedication: [UUID: [SQLiteMedicationSchedule]] = [:]
 
-    init(
-        journalID: NSManagedObjectID,
-        manageAction: @escaping () -> Void,
-        onLogAsNeeded: @escaping (MedicationTodayModel.AsNeededItem) -> Void = { _ in },
-        loggingError: String? = nil,
-        refreshToken: Int = 0
-    ) {
-        self.journalID = journalID
-        self.manageAction = manageAction
-        self.onLogAsNeeded = onLogAsNeeded
-        self.loggingError = loggingError
-        self.refreshToken = refreshToken
-        let initialDay = Calendar.current.startOfDay(for: Date())
-        _model = State(initialValue: MedicationTodayModel(journalID: journalID, day: initialDay))
-        _selectedDay = State(initialValue: initialDay)
-    }
+    @State private var selectedDate: Date = Calendar.current.startOfDay(for: Date())
+    @State private var takenByScheduleID: [UUID: SQLiteMedicationIntake] = [:]
+
+    @State private var asNeededTarget: SQLiteMedication?
 
     var body: some View {
-        let dayBinding = Binding<Date>(
-            get: { selectedDay },
-            set: { updateSelectedDay($0) }
-        )
-
-        Section {
-            if model.hasMedications == false {
-                VStack(spacing: 8) {
-                    Text("Set up medications to check off doses or log as they happen.")
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(.secondary)
-                    Button("Set Up Medications", action: manageAction)
-                        .buttonStyle(.borderedProminent)
+        Section("Quick Medication Log") {
+            // Date selector to backfill previous days
+            DatePicker("Log Date", selection: $selectedDate, displayedComponents: [.date])
+                .onChange(of: selectedDate) { _, _ in
+                    reloadIntakesForSelectedDay()
                 }
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.vertical, 16)
+
+            // Scheduled medications
+            if scheduledMedications.isEmpty {
+                Text("No scheduled medications.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             } else {
-                if model.scheduled.isEmpty == false {
-                    VStack(alignment: .leading, spacing: 12) {
-                        ForEach(model.scheduled) { occurrence in
-                            ScheduledDoseRow(occurrence: occurrence) {
-                                toggleScheduled(occurrence)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                } else {
-                    Text("No scheduled doses today.")
-                        .foregroundStyle(.secondary)
-                }
-
-                if model.asNeeded.isEmpty == false {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("As Needed")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-
-                        ForEach(model.asNeeded) { item in
-                            Button {
-                                onLogAsNeeded(item)
-                            } label: {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(item.medicationName)
-                                            .font(.headline)
-                                            .foregroundStyle(Color.ink)
-                                        if let useCase = item.medicationUseCase {
-                                            Text(useCase)
-                                                .font(.footnote.weight(.semibold))
-                                                .foregroundStyle(Color.brandAccent)
-                                        }
-                                        if let amount = item.displayAmount {
-                                            Text(amount)
-                                                .font(.subheadline)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        if let last = item.lastLoggedAt {
-                                            Text("Last logged \(last, format: .relative(presentation: .named))")
-                                                .font(.footnote)
-                                                .foregroundStyle(.secondary)
-                                        }
+                ForEach(scheduledMedications) { med in
+                    if let doses = scheduledDoses(for: med, on: selectedDate), !doses.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(med.name)
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                            ForEach(doses, id: \.id) { sched in
+                                ScheduledDoseRow(
+                                    medication: med,
+                                    schedule: sched,
+                                    date: selectedDate,
+                                    isTaken: takenByScheduleID[sched.id] != nil,
+                                    toggle: { isOn in
+                                        if isOn { logScheduledDose(schedule: sched, medication: med) }
+                                        else { unlogScheduledDose(schedule: sched) }
                                     }
-                                    Spacer()
-                                    Label("Log", systemImage: "plus.circle")
-                                        .labelStyle(.iconOnly)
-                                        .font(.title3)
-                                        .foregroundStyle(Color.brandPrimary)
-                                }
-                                .padding(.vertical, 8)
+                                )
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+
+            // As-needed medications
+            if !asNeededMedications.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("As Needed")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    ForEach(asNeededMedications) { med in
+                        HStack {
+                            Text(med.name)
+                            Spacer()
+                            Button {
+                                asNeededTarget = med
+                            } label: {
+                                Image(systemName: "plus.circle")
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("Log \(item.medicationName)")
-                        }
-
-                        if let loggingError {
-                            Text(loggingError)
-                                .font(.footnote)
-                                .foregroundStyle(Color.red)
-                                .padding(.top, 4)
                         }
                     }
-                    .padding(.top, 12)
                 }
-
-                Button("Manage Medications", action: manageAction)
-                    .buttonStyle(.bordered)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.top, 12)
+                .padding(.top, 4)
             }
-        } header: {
-            MedicationQuickLogHeader(
-                day: model.day,
-                canAdvance: canAdvanceDay,
-                dateBinding: dayBinding,
-                onPrevious: { shiftSelectedDay(by: -1) },
-                onNext: { shiftSelectedDay(by: 1) }
+
+            Button("Manage Medications", action: manageAction)
+                .foregroundColor(.blue)
+
+            if let error = loggingError {
+                Text(error)
+                    .foregroundColor(.red)
+                    .font(.caption)
+            }
+        }
+        .onAppear(perform: loadAll)
+        .sheet(item: $asNeededTarget) { med in
+            AsNeededIntakeSheet(medication: med, defaultDate: selectedDate) {
+                reloadIntakesForSelectedDay()
+            }
+        }
+    }
+
+    // MARK: - Derived Collections
+
+    private var scheduledMedications: [SQLiteMedication] {
+        medications.filter { !($0.isAsNeeded ?? false) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private var asNeededMedications: [SQLiteMedication] {
+        medications.filter { $0.isAsNeeded ?? false }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private func scheduledDoses(for medication: SQLiteMedication, on date: Date) -> [SQLiteMedicationSchedule]? {
+        let all = schedulesByMedication[medication.id] ?? []
+
+        // If no explicit doses are defined, default to once-daily at 8:00 AM
+        if all.isEmpty {
+            let maskAllDays = MedicationWeekday.mask(for: MedicationWeekday.allCases)
+            let synthetic = SQLiteMedicationSchedule(
+                id: medication.id, // stable ID so toggling works per med
+                medicationID: medication.id,
+                label: "Daily",
+                amount: medication.defaultAmount,
+                unit: medication.defaultUnit,
+                cadence: "daily",
+                interval: 1,
+                daysOfWeekMask: maskAllDays,
+                hour: Int16(8),
+                minute: Int16(0),
+                timeZoneIdentifier: TimeZone.current.identifier,
+                startDate: nil,
+                isActive: true,
+                sortOrder: 0
             )
+            return [synthetic]
         }
-        .task { refresh() }
-        .onAppear { refresh() }
-        .onReceive(NotificationCenter.default.publisher(for: .NSManagedObjectContextObjectsDidChange, object: context)) { _ in
-            refresh()
+
+        let mask = MedicationWeekday.mask(for: [weekday(for: date)])
+        return all.filter { sched in
+            (sched.isActive ?? true) && (sched.daysOfWeekMask & mask) == mask
         }
-        .onChange(of: refreshToken, initial: false) { _, _ in
-            refresh()
+        .sorted { lhs, rhs in
+            if lhs.sortOrder != rhs.sortOrder { return lhs.sortOrder < rhs.sortOrder }
+            let lh = Int(lhs.hour ?? 0), rh = Int(rhs.hour ?? 0)
+            if lh != rh { return lh < rh }
+            return Int(lhs.minute ?? 0) < Int(rhs.minute ?? 0)
         }
     }
 
-    private func refresh() {
-        model.refresh(in: context)
+    private func weekday(for date: Date) -> MedicationWeekday {
+        let w = Calendar.current.component(.weekday, from: date)
+        return MedicationWeekday(rawValue: w) ?? .monday
     }
 
-    private func toggleScheduled(_ occurrence: MedicationTodayModel.ScheduledOccurrence) {
-        guard let schedule = try? context.existingObject(with: occurrence.scheduleID) as? MedicationSchedule else {
+    // MARK: - Loading
+
+    private func loadAll() {
+        guard let journal = dataStore.fetchJournal(id: journalID) else { return }
+        medications = dataStore.fetchMedications(for: journal)
+        loadSchedules()
+        reloadIntakesForSelectedDay()
+    }
+
+    private func loadSchedules() {
+        @Dependency(\.defaultDatabase) var database
+        var mapping: [UUID: [SQLiteMedicationSchedule]] = [:]
+        do {
+            try database.read { db in
+                for med in medications {
+                    let scheds = try SQLiteMedicationSchedule
+                        .where { $0.medicationID == med.id }
+                        .fetchAll(db)
+                    if !scheds.isEmpty { mapping[med.id] = scheds }
+                }
+            }
+            schedulesByMedication = mapping
+        } catch {
+            // ignore for now
+        }
+    }
+
+    private func reloadIntakesForSelectedDay() {
+        @Dependency(\.defaultDatabase) var database
+        let bounds = dayBounds(for: selectedDate)
+        var taken: [UUID: SQLiteMedicationIntake] = [:]
+        do {
+            let medIDs = Set(medications.map { $0.id })
+            let intakes = try database.read { db in
+                try SQLiteMedicationIntake
+                    .where { $0.timestamp >= bounds.start && $0.timestamp < bounds.end }
+                    .fetchAll(db)
+            }
+            for intake in intakes where medIDs.contains(intake.medicationID) {
+                if let sid = intake.scheduleID {
+                    taken[sid] = intake
+                } else {
+                    // Map as-needed entries to synthetic once-daily schedule id so the checkbox reflects taken state
+                    taken[intake.medicationID] = intake
+                }
+            }
+            takenByScheduleID = taken
+        } catch {
+            // ignore for now
+        }
+    }
+
+    // MARK: - Actions
+
+    private func logScheduledDose(schedule: SQLiteMedicationSchedule, medication: SQLiteMedication) {
+        @Dependency(\.defaultDatabase) var database
+        let times = scheduledDateTime(for: schedule, on: selectedDate)
+        let amountValue = schedule.amount ?? medication.defaultAmount
+        let unitValue = schedule.unit ?? medication.defaultUnit
+        let newIntake = SQLiteMedicationIntake(
+            id: UUID(),
+            medicationID: schedule.medicationID,
+            scheduleID: schedule.id,
+            amount: amountValue,
+            unit: unitValue,
+            timestamp: times.timestamp,
+            scheduledDate: times.scheduledDate,
+            origin: "scheduled"
+        )
+        do {
+            try database.write { db in
+                try SQLiteMedicationIntake.insert { newIntake }.execute(db)
+            }
+            reloadIntakesForSelectedDay()
+        } catch {
+            // ignore for now
+        }
+    }
+
+    private func unlogScheduledDose(schedule: SQLiteMedicationSchedule) {
+        @Dependency(\.defaultDatabase) var database
+        if let intake = takenByScheduleID[schedule.id] {
+            do {
+                try database.write { db in
+                    try SQLiteMedicationIntake.find(intake.id).delete().execute(db)
+                }
+                reloadIntakesForSelectedDay()
+            } catch {
+                // ignore for now
+            }
             return
         }
-        let store = MedicationStore(context: context)
-        let markingTaken = occurrence.taken == false
-        let overrideTimestamp = markingTaken ? loggedTimestamp(for: occurrence) : nil
-        _ = store.setScheduledIntake(
-            schedule,
-            on: model.day,
-            taken: !occurrence.taken,
-            loggedAt: overrideTimestamp
-        )
-        try? context.save()
-        refresh()
-    }
-
-    private var canAdvanceDay: Bool {
-        selectedDay < Calendar.current.startOfDay(for: Date())
-    }
-
-    private func shiftSelectedDay(by offset: Int) {
-        guard let next = Calendar.current.date(byAdding: .day, value: offset, to: selectedDay) else { return }
-        if offset > 0 && canAdvanceDay == false { return }
-        updateSelectedDay(next)
-    }
-
-    private func updateSelectedDay(_ newValue: Date) {
-        let normalized = Calendar.current.startOfDay(for: newValue)
-        let today = Calendar.current.startOfDay(for: Date())
-        guard normalized <= today else { return }
-        guard normalized != selectedDay else { return }
-        selectedDay = normalized
-        model.day = normalized
-        refresh()
-    }
-
-    private func loggedTimestamp(for occurrence: MedicationTodayModel.ScheduledOccurrence) -> Date {
-        let calendar = Calendar.current
-        let todayStart = calendar.startOfDay(for: Date())
-        if calendar.isDate(selectedDay, inSameDayAs: todayStart) {
-            return Date()
-        }
-        return occurrence.scheduledAt
-    }
-
-}
-
-private struct MedicationQuickLogHeader: View {
-    let day: Date
-    let canAdvance: Bool
-    let dateBinding: Binding<Date>
-    let onPrevious: () -> Void
-    let onNext: () -> Void
-
-    private var today: Date {
-        Calendar.current.startOfDay(for: Date())
-    }
-
-    private var dateRange: ClosedRange<Date> {
-        Date.distantPast...today
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Medications")
-                .font(.headline)
-                .foregroundStyle(Color.ink)
-
-            HStack(spacing: 8) {
-                Button(action: onPrevious) {
-                    Image(systemName: "chevron.left")
+        // Synthetic once-daily case: remove any intake for this medication on selected day
+        if schedule.id == schedule.medicationID {
+            let bounds = dayBounds(for: selectedDate)
+            do {
+                try database.write { db in
+                    try SQLiteMedicationIntake
+                        .where { intake in
+                            intake.medicationID == schedule.medicationID &&
+                            intake.timestamp >= bounds.start &&
+                            intake.timestamp < bounds.end &&
+                            intake.scheduleID == nil
+                        }
+                        .delete()
+                        .execute(db)
                 }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("Previous day")
-
-                DatePicker(
-                    "",
-                    selection: dateBinding,
-                    in: dateRange,
-                    displayedComponents: [.date]
-                )
-                .labelsHidden()
-                .datePickerStyle(.compact)
-
-                Button(action: onNext) {
-                    Image(systemName: "chevron.right")
-                }
-                .buttonStyle(.borderless)
-                .disabled(canAdvance == false)
-                .accessibilityLabel("Next day")
+                reloadIntakesForSelectedDay()
+            } catch {
+                // ignore
             }
-
-            Text(day, format: .dateTime.weekday(.wide).month().day().year())
-                .font(.footnote)
-                .foregroundStyle(.secondary)
         }
     }
+
+    private func scheduledDateTime(for schedule: SQLiteMedicationSchedule, on date: Date) -> (timestamp: Date, scheduledDate: Date) {
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: date)
+        var comps = cal.dateComponents([.year, .month, .day], from: start)
+        comps.hour = Int(schedule.hour ?? 8)
+        comps.minute = Int(schedule.minute ?? 0)
+        let ts = cal.date(from: comps) ?? start
+        return (ts, start)
+    }
+
+    private func dayBounds(for date: Date) -> (start: Date, end: Date) {
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: date)
+        let end = cal.date(byAdding: .day, value: 1, to: start) ?? start
+        return (start, end)
+    }
 }
+
+// MARK: - Row Views
 
 private struct ScheduledDoseRow: View {
-    let occurrence: MedicationTodayModel.ScheduledOccurrence
-    let onToggle: () -> Void
+    let medication: SQLiteMedication
+    let schedule: SQLiteMedicationSchedule
+    let date: Date
+    let isTaken: Bool
+    let toggle: (Bool) -> Void
 
     var body: some View {
-        Button(action: onToggle) {
-            HStack(alignment: .center, spacing: 12) {
-                Image(systemName: occurrence.taken ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(occurrence.taken ? Color.brandPrimary : .secondary)
-                    .accessibilityHidden(true)
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Button(action: { toggle(!isTaken) }) {
+                Image(systemName: isTaken ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isTaken ? .blue : .secondary)
+            }
+            .buttonStyle(.plain)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(occurrence.medicationName)
-                        .font(.headline)
-                        .foregroundStyle(Color.ink)
-                    if let useCase = occurrence.medicationUseCase {
-                        Text(useCase)
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(Color.brandAccent)
-                    }
-                    HStack(spacing: 6) {
-                        if occurrence.scheduleLabel.isEmpty == false {
-                            Text(occurrence.scheduleLabel)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                        if let amount = occurrence.displayAmount {
-                            Text(amount)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text(occurrence.scheduledAt, format: .dateTime.hour().minute())
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(schedule.label ?? "Dose")
                         .font(.subheadline)
-                        .foregroundStyle(.primary)
-                    if let logged = occurrence.intakeTimestamp {
-                        Text("Logged \(logged, format: .relative(presentation: .named))")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                    Text(timeString)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let amount = schedule.amount ?? medication.defaultAmount,
+                   let unit = schedule.unit ?? medication.defaultUnit {
+                    Text("\(amount.cleanAmount) \(unit)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
+            Spacer()
+        }
+    }
+
+    private var timeString: String {
+        var comps = DateComponents()
+        comps.hour = Int(schedule.hour ?? 8)
+        comps.minute = Int(schedule.minute ?? 0)
+        let cal = Calendar.current
+        let d = cal.date(from: comps) ?? Date()
+        return d.formatted(date: .omitted, time: .shortened)
+    }
+}
+
+private struct AsNeededIntakeSheet: View {
+    let medication: SQLiteMedication
+    let defaultDate: Date
+    var onSaved: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var amount: String = ""
+    @State private var unit: String = ""
+    @State private var notes: String = ""
+    @State private var timestamp: Date = Date()
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Medication") {
+                    Text(medication.name)
+                }
+                Section("When") {
+                    DatePicker("Time", selection: $timestamp, displayedComponents: [.date, .hourAndMinute])
+                }
+                Section("Dose") {
+                    TextField("Amount", text: $amount)
+                        .keyboardType(.decimalPad)
+                    TextField("Unit", text: $unit)
+                }
+                Section("Notes") {
+                    TextField("Optional note", text: $notes, axis: .vertical)
+                        .lineLimit(2...4)
+                }
+            }
+            .navigationTitle("Log Dose")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }
+                        .disabled(!canSave)
+                }
+            }
+            .onAppear(perform: seed)
+        }
+    }
+
+    private var canSave: Bool {
+        Double(amount) != nil || medication.defaultAmount != nil
+    }
+
+    private func seed() {
+        amount = medication.defaultAmount.map { $0.cleanAmount } ?? ""
+        unit = medication.defaultUnit ?? ""
+        let cal = Calendar.current
+        let dayStart = cal.startOfDay(for: defaultDate)
+        let now = Date()
+        let comps = cal.dateComponents([.hour, .minute], from: now)
+        var dtc = cal.dateComponents([.year, .month, .day], from: dayStart)
+        dtc.hour = comps.hour
+        dtc.minute = comps.minute
+        timestamp = cal.date(from: dtc) ?? defaultDate
+    }
+
+    private func save() {
+        @Dependency(\.defaultDatabase) var database
+        let amt = Double(amount) ?? medication.defaultAmount
+        let unitValue = unit.isEmpty ? medication.defaultUnit : unit
+        let noteValue = notes.isEmpty ? nil : notes
+        let intake = SQLiteMedicationIntake(
+            id: UUID(),
+            medicationID: medication.id,
+            amount: amt,
+            unit: unitValue,
+            timestamp: timestamp,
+            origin: "asNeeded",
+            notes: noteValue
+        )
+        do {
+            try database.write { db in
+                try SQLiteMedicationIntake.insert { intake }.execute(db)
+            }
+            onSaved()
+            dismiss()
+        } catch {
+            dismiss()
         }
     }
 }
 
-extension MedicationQuickLogSection {
-    struct AsNeededLogSheet: View {
-        let item: MedicationTodayModel.AsNeededItem
-        let onCommit: (Decimal?, String?, Date) -> Void
+private extension Double {
+    var cleanAmount: String {
+        if floor(self) == self { return String(Int(self)) }
+        return String(self)
+    }
+}
 
-        @Environment(\.dismiss) private var dismiss
-
-        @State private var amountValue: Double?
-        @State private var unit: String
-        @State private var timestamp: Date = Date()
-
-        private let numberFormatter: NumberFormatter = {
-            let formatter = NumberFormatter()
-            formatter.numberStyle = .decimal
-            formatter.maximumFractionDigits = 2
-            return formatter
-        }()
-
-        init(item: MedicationTodayModel.AsNeededItem, onCommit: @escaping (Decimal?, String?, Date) -> Void) {
-            self.item = item
-            self.onCommit = onCommit
-            _amountValue = State(initialValue: item.defaultAmount.map { NSDecimalNumber(decimal: $0).doubleValue })
-            _unit = State(initialValue: item.unit ?? "")
-        }
-
-        var body: some View {
-            NavigationStack {
-                Form {
-                    Section(item.medicationName) {
-                        TextField("Amount", value: $amountValue, formatter: numberFormatter)
-                            .keyboardType(.decimalPad)
-                        TextField("Unit", text: $unit)
-                        DatePicker("When", selection: $timestamp, displayedComponents: [.date, .hourAndMinute])
-                    }
-                }
-                .navigationTitle("Log Dose")
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel", action: { dismiss() })
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Log") {
-                            let amount = amountValue.map { NSDecimalNumber(value: $0).decimalValue }
-                            let unitValue = unit.trimmingCharacters(in: .whitespaces)
-                            onCommit(amount, unitValue.isEmpty ? nil : unitValue, timestamp)
-                            dismiss()
-                        }
-                        .disabled(amountValue == nil)
-                    }
-                }
-            }
+#Preview {
+    withPreviewDataStore { dataStore in
+        let journal = dataStore.createJournal()
+        List {
+            MedicationQuickLogSection(
+                journalID: journal.id,
+                manageAction: {},
+                loggingError: nil
+            )
         }
     }
 }

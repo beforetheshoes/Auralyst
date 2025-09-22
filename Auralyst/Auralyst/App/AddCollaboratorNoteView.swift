@@ -1,12 +1,12 @@
-import CoreData
+import SQLiteData
 import Observation
 import SwiftUI
 
 struct AddCollaboratorNoteView: View {
-    @Environment(\.managedObjectContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(DataStore.self) private var dataStore
 
-    let entryID: NSManagedObjectID
+    let entryID: UUID
 
     @State private var form = CollaboratorNoteFormModel()
 
@@ -40,23 +40,21 @@ struct AddCollaboratorNoteView: View {
         guard trimmed.isEmpty == false else { return }
         let author = form.authorName.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        context.perform {
-            guard let entry = try? context.existingObject(with: entryID) as? SymptomEntry else {
-                assertionFailure("Missing entry for collaborator note")
-                return
-            }
-
-            let note = CollaboratorNote(context: context)
-            note.id = UUID()
-            note.timestamp = Date()
-            note.text = trimmed
-            note.authorName = author.isEmpty ? nil : author
-            note.entryRef = entry
-            note.journal = entry.journal
-
+        Task {
             do {
-                try context.save()
-                Task { @MainActor in
+                guard let entry = dataStore.fetchSymptomEntry(id: entryID) else {
+                    assertionFailure("Missing entry for collaborator note")
+                    return
+                }
+
+                _ = try dataStore.createCollaboratorNote(
+                    for: dataStore.fetchJournal(id: entry.journalID)!,
+                    entry: entry,
+                    authorName: author.isEmpty ? nil : author,
+                    text: trimmed
+                )
+
+                await MainActor.run {
                     dismiss()
                 }
             } catch {
@@ -77,16 +75,10 @@ final class CollaboratorNoteFormModel {
 }
 
 #Preview("Collaborator Note") {
-    let controller = PersistenceController.preview
-    let context = controller.container.viewContext
-    PreviewSeed.populateIfNeeded(context: context)
-    let request = SymptomEntry.fetchRequest()
-    request.fetchLimit = 1
-    let entry = try? context.fetch(request).first
-    return Group {
-        if let entry {
-            AddCollaboratorNoteView(entryID: entry.objectID)
-                .environment(\.managedObjectContext, context)
-        }
+    withPreviewDataStore { dataStore in
+        let journal = dataStore.createJournal()
+        let entry = try! dataStore.createSymptomEntry(for: journal, severity: 5)
+
+        AddCollaboratorNoteView(entryID: entry.id)
     }
 }

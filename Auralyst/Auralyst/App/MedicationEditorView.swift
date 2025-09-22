@@ -1,430 +1,330 @@
-import CoreData
+import SQLiteData
+import StructuredQueries
 import SwiftUI
+import Dependencies
 
 struct MedicationEditorView: View {
-    let mode: MedicationsView.EditorMode
-    let journalID: NSManagedObjectID
+    let journalID: UUID
+    let medicationID: UUID?
 
-    @Environment(\.managedObjectContext) private var context
     @Environment(\.dismiss) private var dismiss
 
-    @State private var form = MedicationFormState()
-    @State private var didLoad = false
+    @State private var name: String = ""
+    @State private var defaultAmount: String = ""
+    @State private var defaultUnit: String = ""
+    @State private var isAsNeeded: Bool = false
+    @State private var useCase: String = ""
+    @State private var notes: String = ""
 
-    private let numberFormatter: NumberFormatter = {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.maximumFractionDigits = 2
-        return formatter
-    }()
+    // Schedule editing
+    struct ScheduleDraft: Identifiable, Equatable {
+        let id: UUID = UUID() // UI identity
+        var existingID: UUID? // DB identity when editing
+        var label: String = ""
+        var amount: String = "" // keep as string for text field
+        var unit: String = ""
+        var time: Date = Calendar.current.date(bySettingHour: 8, minute: 0, second: 0, of: Date()) ?? Date()
+        var sortOrder: Int16 = 0
+    }
+
+    @State private var scheduleDrafts: [ScheduleDraft] = []
+
+    init(journalID: UUID, medicationID: UUID? = nil) {
+        self.journalID = journalID
+        self.medicationID = medicationID
+    }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Medication") {
-                    TextField("Name", text: $form.name)
-                    Toggle("As Needed", isOn: $form.isAsNeeded)
+                Section("Medication Details") {
+                    TextField("Name", text: $name)
+                    Toggle("As Needed", isOn: $isAsNeeded)
                         .toggleStyle(.switch)
-                        .animation(.easeInOut, value: form.isAsNeeded)
-                    TextField("Default Amount", text: $form.defaultAmount)
+                    TextField("Default Amount", text: $defaultAmount)
                         .keyboardType(.decimalPad)
-                    TextField("Unit", text: $form.defaultUnit)
-                    TextField("Use Case (e.g. Anxiety)", text: $form.useCase)
-                    TextField("Notes", text: $form.notes, axis: .vertical)
-                        .lineLimit(3...6)
+                    TextField("Unit (e.g., mg, ml)", text: $defaultUnit)
+                    TextField("Use Case (e.g., pain, sleep)", text: $useCase)
+                    TextField("Notes", text: $notes, axis: .vertical)
+                        .lineLimit(2...4)
                 }
 
-                if form.isAsNeeded == false {
+                if !isAsNeeded {
                     Section("Schedule") {
-                        if form.scheduleForms.isEmpty {
-                            Text("Add at least one time of day.")
+                        if scheduleDrafts.isEmpty {
+                            Text("Add one or more daily doses with time and amount.")
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
-                        } else {
-                            ForEach($form.scheduleForms) { $schedule in
-                                ScheduleFormView(schedule: $schedule)
+                        }
+
+                        ForEach(scheduleDrafts.indices, id: \.self) { idx in
+                            let binding = Binding(get: { scheduleDrafts[idx] }, set: { scheduleDrafts[idx] = $0 })
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    TextField("Label (e.g., Morning)", text: binding.label)
+                                        .textInputAutocapitalization(.words)
+
+                                    Spacer()
+
+                                    Button(role: .destructive) {
+                                        scheduleDrafts.remove(at: idx)
+                                        renumberSortOrders()
+                                    } label: {
+                                        Image(systemName: "trash")
+                                    }
+                                    .buttonStyle(.borderless)
+                                }
+
+                                HStack {
+                                    TextField("Amount", text: binding.amount)
+                                        .keyboardType(.decimalPad)
+                                        .frame(maxWidth: 120)
+                                    TextField("Unit", text: binding.unit)
+                                        .frame(maxWidth: 80)
+                                    Spacer()
+                                    DatePicker("Time", selection: binding.time, displayedComponents: [.hourAndMinute])
+                                        .labelsHidden()
+                                }
                             }
-                            .onDelete(perform: removeSchedules)
+                            .padding(.vertical, 4)
                         }
 
                         Button {
-                            addSchedule()
+                            addDraftDose()
                         } label: {
-                            Label("Add Time", systemImage: "plus.circle")
+                            Label("Add Dose", systemImage: "plus")
                         }
                     }
                 }
-
-                if case .edit = mode {
-                    Section {
-                        Button("Delete Medication", role: .destructive, action: deleteMedication)
-                    }
-                }
             }
-            .navigationTitle(modeTitle)
+            .navigationTitle(medicationID == nil ? "Add Medication" : "Edit Medication")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel", action: { dismiss() })
+                    Button("Cancel") { dismiss() }
                 }
-#if os(macOS)
-                ToolbarItemGroup(placement: .bottomBar) {
-                    Spacer()
-                    Button("Save", action: save)
-                        .disabled(isSaveDisabled)
-                        .keyboardShortcut(.defaultAction)
-                }
-#else
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save", action: save)
-                        .disabled(isSaveDisabled)
-                        .keyboardShortcut(.defaultAction)
+                    Button("Save") { save() }
+                        .disabled(name.isEmpty)
                 }
-#endif
             }
-            .onAppear(perform: loadIfNeeded)
+            .onAppear { loadIfNeeded() }
         }
     }
 
-    private var modeTitle: String {
-        switch mode {
-        case .create: return "New Medication"
-        case .edit: return "Edit Medication"
+    private func addDraftDose() {
+        var draft = ScheduleDraft()
+        draft.sortOrder = Int16(scheduleDrafts.count)
+        if scheduleDrafts.isEmpty {
+            draft.label = "Morning"
+        } else if scheduleDrafts.count == 1 {
+            draft.label = "Evening"
+            draft.time = Calendar.current.date(bySettingHour: 20, minute: 0, second: 0, of: Date()) ?? draft.time
         }
+        scheduleDrafts.append(draft)
     }
 
-    private var isSaveDisabled: Bool {
-        let trimmedName = form.name.trimmingCharacters(in: .whitespaces)
-        if trimmedName.isEmpty { return true }
-        if form.isAsNeeded == false {
-            if form.scheduleForms.isEmpty { return true }
-            for schedule in form.scheduleForms where schedule.cadence == .weekly && schedule.weekdays.isEmpty {
-                return true
-            }
-        }
-        return false
+    private func renumberSortOrders() {
+        for i in scheduleDrafts.indices { scheduleDrafts[i].sortOrder = Int16(i) }
     }
 
     private func loadIfNeeded() {
-        guard didLoad == false else { return }
-        defer { didLoad = true }
+        @Dependency(\.defaultDatabase) var database
 
-        switch mode {
-        case .create:
-            form = MedicationFormState()
-        case .edit(let objectID):
-            if let medication = try? context.existingObject(with: objectID) as? Medication {
-                form = MedicationFormState(medication: medication, formatter: numberFormatter)
+        // Load existing medication data if editing
+        guard let medicationID else { return }
+        do {
+            if let med = try database.read({ db in try SQLiteMedication.find(medicationID).fetchOne(db) }) {
+                name = med.name
+                if let amt = med.defaultAmount {
+                    defaultAmount = (floor(amt) == amt) ? String(Int(amt)) : String(amt)
+                } else {
+                    defaultAmount = ""
+                }
+                defaultUnit = med.defaultUnit ?? ""
+                isAsNeeded = med.isAsNeeded ?? false
+                useCase = med.useCase ?? ""
+                notes = med.notes ?? ""
             }
+
+            // Load schedules for this medication when not as-needed
+            let schedules = try database.read { db in
+                try SQLiteMedicationSchedule
+                    .where { $0.medicationID == medicationID }
+                    .fetchAll(db)
+            }
+
+            scheduleDrafts = schedules
+                .sorted { (lhs, rhs) in
+                    if lhs.sortOrder != rhs.sortOrder { return lhs.sortOrder < rhs.sortOrder }
+                    let lh = Int(lhs.hour ?? 0), rh = Int(rhs.hour ?? 0)
+                    if lh != rh { return lh < rh }
+                    return Int(lhs.minute ?? 0) < Int(rhs.minute ?? 0)
+                }
+                .enumerated()
+                .map { idx, s in
+                    var comps = DateComponents()
+                    comps.hour = Int(s.hour ?? 8)
+                    comps.minute = Int(s.minute ?? 0)
+                    let time = Calendar.current.date(from: comps) ?? Date()
+                    return ScheduleDraft(
+                        existingID: s.id,
+                        label: s.label ?? "",
+                        amount: s.amount.map { (floor($0) == $0) ? String(Int($0)) : String($0) } ?? "",
+                        unit: s.unit ?? "",
+                        time: time,
+                        sortOrder: Int16(idx)
+                    )
+                }
+        } catch {
+            print("Failed to load medication/schedules: \(error)")
         }
-    }
-
-    private func addSchedule() {
-        let order = form.scheduleForms.count
-        form.scheduleForms.append(MedicationScheduleFormState.makeDefault(order: order))
-    }
-
-    private func removeSchedules(at offsets: IndexSet) {
-        form.scheduleForms.remove(atOffsets: offsets)
     }
 
     private func save() {
-        guard let journal = try? context.existingObject(with: journalID) as? Journal else {
-            assertionFailure("Journal missing for medication save")
-            return
-        }
+        @Dependency(\.defaultDatabase) var database
 
-        let medication: Medication
-        switch mode {
-        case .create:
-            medication = Medication(context: context)
-            medication.id = UUID()
-            medication.createdAt = Date()
-            medication.journal = journal
-        case .edit(let objectID):
-            guard let existing = try? context.existingObject(with: objectID) as? Medication else {
-                assertionFailure("Unable to find medication to edit")
-                return
-            }
-            medication = existing
-        }
-
-        apply(form: form, to: medication)
+        let amount = Double(defaultAmount)
+        let unit = defaultUnit.isEmpty ? nil : defaultUnit
+        let notesParam = notes.isEmpty ? nil : notes
+        let useCaseParam = useCase.isEmpty ? nil : useCase
 
         do {
-            try context.save()
-            dismiss()
+            if let medID = medicationID {
+                guard let existing = try database.read({ db in
+                    try SQLiteMedication.find(medID).fetchOne(db)
+                }) else {
+                    assertionFailure("Attempting to update missing medication")
+                    return
+                }
+
+                let updatedMedication = SQLiteMedication(
+                    id: existing.id,
+                    journalID: existing.journalID,
+                    name: name,
+                    defaultAmount: amount,
+                    defaultUnit: unit,
+                    isAsNeeded: isAsNeeded,
+                    useCase: useCaseParam,
+                    notes: notesParam,
+                    createdAt: existing.createdAt,
+                    updatedAt: Date()
+                )
+
+                try database.write { db in
+                    try SQLiteMedication.update(updatedMedication).execute(db)
+                }
+
+                // Persist schedules
+                try persistSchedules(for: medID)
+            } else {
+                // Create new medication (typed insert so we own the id)
+                let med = SQLiteMedication(
+                    journalID: journalID,
+                    name: name,
+                    defaultAmount: amount,
+                    defaultUnit: unit,
+                    isAsNeeded: isAsNeeded,
+                    useCase: useCaseParam,
+                    notes: notesParam
+                )
+
+                try database.write { db in
+                    try SQLiteMedication.insert { med }.execute(db)
+                }
+
+                // Persist schedules for new medication
+                try persistSchedules(for: med.id)
+            }
         } catch {
-            assertionFailure("Failed to save medication: \(error)")
-        }
-    }
-
-    private func apply(form: MedicationFormState, to medication: Medication) {
-        let trimmedName = form.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        medication.name = trimmedName
-        let trimmedNotes = form.notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        medication.notes = trimmedNotes.isEmpty ? nil : trimmedNotes
-        medication.isAsNeeded = form.isAsNeeded
-
-        if let amount = decimal(from: form.defaultAmount) {
-            medication.defaultAmount = amount.nsDecimalNumber
-        } else {
-            medication.defaultAmount = nil
+            print("Failed to save medication: \(error)")
         }
 
-        let unit = form.defaultUnit.trimmingCharacters(in: .whitespacesAndNewlines)
-        medication.defaultUnit = unit.isEmpty ? nil : unit
-        let useCaseValue = form.useCase.trimmingCharacters(in: .whitespacesAndNewlines)
-        medication.useCase = useCaseValue.isEmpty ? nil : useCaseValue
-        medication.updatedAt = Date()
-
-        let existingSchedules = (medication.scheduleItems as? Set<MedicationSchedule>) ?? []
-        if form.isAsNeeded {
-            existingSchedules.forEach { context.delete($0) }
-            return
-        }
-
-        var handledIDs: Set<NSManagedObjectID> = []
-        for (index, state) in form.scheduleForms.enumerated() {
-            let schedule: MedicationSchedule
-            if let objectID = state.objectID,
-               let existing = existingSchedules.first(where: { $0.objectID == objectID }) {
-                schedule = existing
-                handledIDs.insert(objectID)
-            } else {
-                schedule = MedicationSchedule(context: context)
-                schedule.id = UUID()
-                schedule.startDate = state.startDate
-                schedule.medication = medication
-            }
-
-            let timeComponents = Calendar.current.dateComponents([.hour, .minute], from: state.time)
-            schedule.hour = Int16(timeComponents.hour ?? 0)
-            schedule.minute = Int16(timeComponents.minute ?? 0)
-            schedule.sortOrder = Int16(index)
-            schedule.label = state.label.trimmingCharacters(in: .whitespacesAndNewlines)
-            schedule.cadence = state.cadence.rawValue
-            schedule.interval = Int16(max(state.interval, 1))
-            schedule.isActive = state.isActive
-            schedule.startDate = state.startDate
-            schedule.timeZoneIdentifier = state.timeZoneIdentifier ?? TimeZone.current.identifier
-            schedule.daysOfWeekMask = MedicationWeekday.mask(for: Array(state.weekdays))
-
-            if let amount = decimal(from: state.amount) {
-                schedule.amount = amount.nsDecimalNumber
-            } else {
-                schedule.amount = nil
-            }
-
-            let unit = state.unit.trimmingCharacters(in: .whitespacesAndNewlines)
-            schedule.unit = unit.isEmpty ? nil : unit
-        }
-
-        let toDelete = existingSchedules.filter { schedule in
-            handledIDs.contains(schedule.objectID) == false
-        }
-        toDelete.forEach { context.delete($0) }
-    }
-
-    private func decimal(from string: String) -> Decimal? {
-        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.isEmpty == false else { return nil }
-        return numberFormatter.number(from: trimmed)?.decimalValue
-    }
-
-    private func deleteMedication() {
-        guard case .edit(let objectID) = mode,
-              let medication = try? context.existingObject(with: objectID) as? Medication else {
-            dismiss()
-            return
-        }
-        context.delete(medication)
-        try? context.save()
         dismiss()
     }
-}
 
-private struct MedicationFormState {
-    var name: String = ""
-    var notes: String = ""
-    var isAsNeeded: Bool = false
-    var defaultAmount: String = ""
-    var defaultUnit: String = ""
-    var useCase: String = ""
-    var scheduleForms: [MedicationScheduleFormState] = [MedicationScheduleFormState.makeDefault(order: 0)]
+    private func persistSchedules(for medicationID: UUID) throws {
+        @Dependency(\.defaultDatabase) var database
 
-    init() {}
-
-    init(medication: Medication, formatter: NumberFormatter) {
-        name = medication.name ?? ""
-        notes = medication.notes ?? ""
-        isAsNeeded = medication.isAsNeeded
-        if let amount = medication.defaultAmountValue {
-            defaultAmount = formatter.string(from: amount.nsDecimalNumber) ?? ""
-        }
-        defaultUnit = medication.defaultUnit ?? ""
-        useCase = medication.useCase ?? ""
-
-        if medication.isAsNeeded {
-            scheduleForms = []
-        } else {
-            let schedules = medication.scheduleList
-            scheduleForms = schedules.enumerated().map { index, schedule in
-                MedicationScheduleFormState(schedule: schedule, order: index, formatter: formatter)
+        try database.write { db in
+            // If set as as-needed, remove all schedules
+            if isAsNeeded {
+                try SQLiteMedicationSchedule
+                    .where { $0.medicationID == medicationID }
+                    .delete()
+                    .execute(db)
+                return
             }
-        }
-    }
-}
 
-private struct MedicationScheduleFormState: Identifiable {
-    let id: UUID
-    var objectID: NSManagedObjectID?
-    var label: String
-    var time: Date
-    var amount: String
-    var unit: String
-    var cadence: MedicationSchedule.Cadence
-    var interval: Int
-    var weekdays: Set<MedicationWeekday>
-    var isActive: Bool
-    var sortOrder: Int
-    var startDate: Date
-    var timeZoneIdentifier: String?
+            // Fetch existing schedules
+            let existing = try SQLiteMedicationSchedule
+                .where { $0.medicationID == medicationID }
+                .fetchAll(db)
+            let existingByID: [UUID: SQLiteMedicationSchedule] = .init(uniqueKeysWithValues: existing.map { ($0.id, $0) })
 
-    init(id: UUID = UUID(),
-         objectID: NSManagedObjectID? = nil,
-         label: String = "",
-         time: Date,
-         amount: String = "",
-         unit: String = "",
-         cadence: MedicationSchedule.Cadence = .daily,
-         interval: Int = 1,
-         weekdays: Set<MedicationWeekday> = [],
-         isActive: Bool = true,
-         sortOrder: Int,
-         startDate: Date = Date(),
-         timeZoneIdentifier: String? = nil) {
-        self.id = id
-        self.objectID = objectID
-        self.label = label
-        self.time = time
-        self.amount = amount
-        self.unit = unit
-        self.cadence = cadence
-        self.interval = max(interval, 1)
-        self.weekdays = weekdays
-        self.isActive = isActive
-        self.sortOrder = sortOrder
-        self.startDate = startDate
-        self.timeZoneIdentifier = timeZoneIdentifier
-    }
+            // Update/Insert drafts
+            var keptIDs: Set<UUID> = []
+            let maskAllDays: Int16 = MedicationWeekday.mask(for: MedicationWeekday.allCases)
+            let tzID = TimeZone.current.identifier
 
-    init(schedule: MedicationSchedule, order: Int, formatter: NumberFormatter) {
-        let calendar = Calendar.current
-        var components = DateComponents()
-        components.hour = Int(schedule.hour)
-        components.minute = Int(schedule.minute)
-        let time = calendar.date(from: components) ?? Date()
+            for (index, draft) in scheduleDrafts.enumerated() {
+                let amountValue: Double? = Double(draft.amount)
+                let unitValue: String? = draft.unit.isEmpty ? nil : draft.unit
+                let comps = Calendar.current.dateComponents([.hour, .minute], from: draft.time)
+                let hour: Int16? = comps.hour.flatMap { Int16($0) }
+                let minute: Int16? = comps.minute.flatMap { Int16($0) }
+                let labelValue: String? = draft.label.isEmpty ? nil : draft.label
+                let sortOrder: Int16 = Int16(index)
 
-        let amountString: String
-        if let amount = schedule.amountValue {
-            amountString = formatter.string(from: amount.nsDecimalNumber) ?? ""
-        } else {
-            amountString = ""
-        }
-
-        self.init(
-            objectID: schedule.objectID,
-            label: schedule.label ?? "",
-            time: time,
-            amount: amountString,
-            unit: schedule.unit ?? "",
-            cadence: schedule.cadenceValue,
-            interval: Int(schedule.interval == 0 ? 1 : schedule.interval),
-            weekdays: Set(schedule.weekdays),
-            isActive: schedule.isActive,
-            sortOrder: order,
-            startDate: schedule.startDate ?? Date(),
-            timeZoneIdentifier: schedule.timeZoneIdentifier
-        )
-    }
-
-    static func makeDefault(order: Int) -> MedicationScheduleFormState {
-        var components = DateComponents()
-        components.hour = 8
-        components.minute = 0
-        let calendar = Calendar.current
-        let time = calendar.date(from: components) ?? Date()
-        return MedicationScheduleFormState(time: time, sortOrder: order)
-    }
-}
-
-private struct ScheduleFormView: View {
-    @Binding var schedule: MedicationScheduleFormState
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            TextField("Label", text: $schedule.label)
-            DatePicker("Time", selection: $schedule.time, displayedComponents: .hourAndMinute)
-            TextField("Amount", text: $schedule.amount)
-                .keyboardType(.decimalPad)
-            TextField("Unit", text: $schedule.unit)
-
-            Picker("Cadence", selection: $schedule.cadence) {
-                ForEach(MedicationSchedule.Cadence.allCases) { cadence in
-                    Text(cadence.label).tag(cadence)
+                if let existingID = draft.existingID, let existingSchedule = existingByID[existingID] {
+                    keptIDs.insert(existingID)
+                    let updatedSchedule = SQLiteMedicationSchedule(
+                        id: existingID,
+                        medicationID: medicationID,
+                        label: labelValue,
+                        amount: amountValue,
+                        unit: unitValue,
+                        cadence: "daily",
+                        interval: 1,
+                        daysOfWeekMask: maskAllDays,
+                        hour: hour,
+                        minute: minute,
+                        timeZoneIdentifier: tzID,
+                        startDate: existingSchedule.startDate,
+                        isActive: true,
+                        sortOrder: sortOrder
+                    )
+                    try SQLiteMedicationSchedule.update(updatedSchedule).execute(db)
+                } else {
+                    let schedule = SQLiteMedicationSchedule(
+                        medicationID: medicationID,
+                        label: labelValue,
+                        amount: amountValue,
+                        unit: unitValue,
+                        cadence: "daily",
+                        interval: 1,
+                        daysOfWeekMask: maskAllDays,
+                        hour: hour,
+                        minute: minute,
+                        timeZoneIdentifier: tzID,
+                        isActive: true,
+                        sortOrder: sortOrder
+                    )
+                    try SQLiteMedicationSchedule.insert { schedule }.execute(db)
                 }
             }
-            .pickerStyle(.segmented)
 
-            switch schedule.cadence {
-            case .weekly, .custom:
-                WeekdaySelector(selectedDays: $schedule.weekdays)
-            case .interval:
-                Stepper(value: $schedule.interval, in: 1...30) {
-                    Text("Every \(schedule.interval) day\(schedule.interval == 1 ? "" : "s")")
-                }
-                DatePicker("Starts", selection: $schedule.startDate, displayedComponents: .date)
-            case .daily:
-                EmptyView()
+            // Delete removed schedules
+            let toDelete = existing.compactMap { keptIDs.contains($0.id) ? nil : $0.id }
+            for id in toDelete {
+                try SQLiteMedicationSchedule.find(id).delete().execute(db)
             }
-
-            Toggle("Active", isOn: $schedule.isActive)
         }
-        .padding(.vertical, 4)
     }
 }
 
-private struct WeekdaySelector: View {
-    @Binding var selectedDays: Set<MedicationWeekday>
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Weekdays")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            HStack(spacing: 8) {
-                ForEach(MedicationWeekday.allCases, id: \.self) { day in
-                    let isSelected = selectedDays.contains(day)
-                    Button {
-                        toggle(day)
-                    } label: {
-                        Text(day.shortName)
-                            .font(.subheadline)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(isSelected ? Color.brandPrimary.opacity(0.2) : Color.surfaceLight, in: Capsule())
-                            .foregroundStyle(isSelected ? Color.brandPrimary : .secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    private func toggle(_ day: MedicationWeekday) {
-        if selectedDays.contains(day) {
-            selectedDays.remove(day)
-        } else {
-            selectedDays.insert(day)
-        }
+#Preview {
+    withPreviewDataStore { _ in
+        MedicationEditorView(journalID: UUID())
     }
 }

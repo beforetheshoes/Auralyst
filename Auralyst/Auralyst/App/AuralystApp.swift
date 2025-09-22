@@ -1,20 +1,31 @@
-import CoreData
 import SwiftUI
+import SQLiteData
 
 @main
 struct AuralystApp: App {
     @State private var sceneModel = AppSceneModel()
-    private let persistence = PersistenceController.shared
+    @State private var dataStore = DataStore()
+
+    private var isRunningTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
 
     init() {
         configureAppearance()
+        prepareDependencies { try! $0.bootstrapDatabase() }
     }
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environment(sceneModel)
-                .environment(\.managedObjectContext, persistence.container.viewContext)
+            Group {
+                if isRunningTests {
+                    Text("Running Tests")
+                } else {
+                    ContentView()
+                        .environment(sceneModel)
+                }
+            }
+            .environment(dataStore)
         }
     }
 }

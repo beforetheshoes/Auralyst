@@ -1,12 +1,12 @@
-import CoreData
+import SQLiteData
 import Observation
 import SwiftUI
 
 struct AddEntryView: View {
-    let journalID: NSManagedObjectID
+    let journalID: UUID
 
-    @Environment(\.managedObjectContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(DataStore.self) private var dataStore
 
     @State private var form = EntryFormModel()
 
@@ -57,23 +57,24 @@ struct AddEntryView: View {
     }
 
     private func saveEntry() {
-        context.perform {
-            guard let journal = try? context.existingObject(with: journalID) as? Journal else {
-                assertionFailure("Missing journal for new entry")
-                return
-            }
-
-            let entry = SymptomEntry(context: context)
-            entry.id = UUID()
-            entry.timestamp = form.timestamp
-            entry.severity = Int16(form.overallSeverity)
-            entry.isMenstruating = form.isMenstruating
-            entry.note = form.note.isEmpty ? nil : form.note
-            entry.journal = journal
-
+        Task {
             do {
-                try context.save()
-                dismiss()
+                guard let journal = dataStore.fetchJournal(id: journalID) else {
+                    assertionFailure("Missing journal for new entry")
+                    return
+                }
+
+                _ = try dataStore.createSymptomEntry(
+                    for: journal,
+                    severity: Int16(form.overallSeverity),
+                    note: form.note.isEmpty ? nil : form.note,
+                    timestamp: form.timestamp,
+                    isMenstruating: form.isMenstruating
+                )
+
+                await MainActor.run {
+                    dismiss()
+                }
             } catch {
                 assertionFailure("Failed to save entry: \(error)")
             }
@@ -94,14 +95,8 @@ final class EntryFormModel {
 }
 
 #Preview("Add Entry") {
-    let controller = PersistenceController.preview
-    let context = controller.container.viewContext
-    PreviewSeed.populateIfNeeded(context: context)
-    let journal = try? context.fetch(Journal.fetchRequest()).first
-    return Group {
-        if let journal {
-            AddEntryView(journalID: journal.objectID)
-                .environment(\.managedObjectContext, context)
-        }
+    withPreviewDataStore { dataStore in
+        let journal = dataStore.createJournal()
+        AddEntryView(journalID: journal.id)
     }
 }

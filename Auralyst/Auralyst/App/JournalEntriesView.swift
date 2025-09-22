@@ -1,429 +1,374 @@
-import CoreData
 import SwiftUI
+import SQLiteData
+import Dependencies
 
 struct JournalEntriesView: View {
-    let journalID: NSManagedObjectID
-    let journalIdentifier: UUID
+    let journal: SQLiteJournal
     let onAddEntry: () -> Void
+    let onShare: () -> Void
+    let onExport: () -> Void
 
-    @Environment(\.managedObjectContext) private var context
-    @FetchRequest private var entries: FetchedResults<SymptomEntry>
-    @FetchRequest private var medicationIntakes: FetchedResults<MedicationIntake>
+    // Fetch entries and models for this specific journal
+    @FetchAll var entries: [SQLiteSymptomEntry]
+    @FetchAll var medications: [SQLiteMedication]
+    @FetchAll(SQLiteMedicationIntake.all) var medicationIntakes
+
     @State private var showingMedicationManager = false
-    @State private var selectedAsNeededItem: MedicationTodayModel.AsNeededItem?
-    @State private var asNeededLoggingError: String?
-    @State private var asNeededRefreshToken = 0
-    @State private var editingIntake: MedicationIntake?
-    @State private var pendingDeleteIntake: MedicationIntake?
-    @State private var showingDeleteConfirmation = false
-    @State private var deletionError: String?
-    @State private var expandedDays: Set<Date> = []
 
-    init(journalID: NSManagedObjectID, journalIdentifier: UUID, onAddEntry: @escaping () -> Void) {
-        self.journalID = journalID
-        self.journalIdentifier = journalIdentifier
+    init(
+        journal: SQLiteJournal,
+        onAddEntry: @escaping () -> Void,
+        onShare: @escaping () -> Void,
+        onExport: @escaping () -> Void
+    ) {
+        self.journal = journal
         self.onAddEntry = onAddEntry
-        _entries = FetchRequest(
-            entity: SymptomEntry.entity(),
-            sortDescriptors: [NSSortDescriptor(keyPath: \SymptomEntry.timestamp, ascending: false)],
-            predicate: NSPredicate(
-                format: "(journal == %@) OR (journal.id == %@)",
-                journalID,
-                journalIdentifier as CVarArg
-            ),
-            animation: .default
-        )
-        _medicationIntakes = FetchRequest(
-            entity: MedicationIntake.entity(),
-            sortDescriptors: [NSSortDescriptor(keyPath: \MedicationIntake.timestamp, ascending: false)],
-            predicate: NSPredicate(
-                format: "(medication.journal == %@) OR (entry.journal == %@) OR (medication.journal.id == %@) OR (entry.journal.id == %@)",
-                journalID,
-                journalID,
-                journalIdentifier as CVarArg,
-                journalIdentifier as CVarArg
-            ),
-            animation: .default
-        )
+        self.onShare = onShare
+        self.onExport = onExport
+
+        // Filter entries and medications for this journal
+        self._entries = FetchAll(SQLiteSymptomEntry.where { $0.journalID == journal.id })
+        self._medications = FetchAll(SQLiteMedication.where { $0.journalID == journal.id })
     }
 
     var body: some View {
         List {
+            // Quick log meds from home
             MedicationQuickLogSection(
-                journalID: journalID,
+                journalID: journal.id,
                 manageAction: { showingMedicationManager = true },
-                onLogAsNeeded: { item in
-                    guard selectedAsNeededItem == nil else { return }
-                    asNeededLoggingError = nil
-                    let selection = item
-                    DispatchQueue.main.async {
-                        selectedAsNeededItem = selection
-                    }
-                },
-                loggingError: asNeededLoggingError,
-                refreshToken: asNeededRefreshToken
+                loggingError: nil
             )
 
-            if timelineSections.isEmpty {
-                Section {
-                    TimelineEmptyState(addAction: onAddEntry)
-                        .frame(maxWidth: .infinity)
-                        .listRowBackground(Color.clear)
-                }
-            } else {
-                ForEach(timelineSections) { section in
-                    Section(section.date.formatted(date: .abbreviated, time: .omitted)) {
-                        let isExpanded = expandedDays.contains(section.date)
-
-                        if section.intakes.isEmpty == false {
-                            MedicationDaySummaryRow(
-                                intakes: section.intakes,
-                                isExpanded: isExpanded
-                            ) {
-                                toggleDayExpansion(section.date)
-                            }
-                        }
-
-                        ForEach(section.entries, id: \.objectID) { entry in
-                            NavigationLink {
-                                EntryDetailView(entryID: entry.objectID)
-                            } label: {
-                                SymptomEntryRow(entry: entry)
-                            }
-                        }
-
-                        if isExpanded {
-                            ForEach(section.intakes, id: \.objectID) { intake in
-                                MedicationIntakeSummaryRow(intake: intake)
-                                    .modifier(IntakeActionsModifier(
-                                        onEdit: { editingIntake = intake },
-                                        onDelete: { promptDelete(intake) }
-                                    ))
-                            }
-                        }
+            // Days list (symptoms + meds per day)
+            Section("Recent Days") {
+                ForEach(dayKeys, id: \.self) { day in
+                    NavigationLink {
+                        DayDetailView(
+                            journal: journal,
+                            date: day,
+                            entries: entriesByDay[day] ?? [],
+                            intakes: intakesByDay[day] ?? [],
+                            medicationsByID: medicationsByID
+                        )
+                    } label: {
+                        DaySummaryRow(
+                            date: day,
+                            entries: entriesByDay[day] ?? [],
+                            intakes: intakesByDay[day] ?? [],
+                            medicationsByID: medicationsByID
+                        )
                     }
-                    .listRowBackground(Color.surfaceLight)
                 }
             }
         }
-        .listStyle(.insetGrouped)
-        .background(Color.surfaceLight)
+        .navigationTitle("Journal")
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button("Add Entry", action: onAddEntry)
+                Menu {
+                    Button("Share Journal", action: onShare)
+                    Button("Export Data", action: onExport)
+                } label: {
+                    Label("Options", systemImage: "ellipsis.circle")
+                }
+            }
+        }
         .sheet(isPresented: $showingMedicationManager) {
-            MedicationsView(journalID: journalID)
-        }
-        .sheet(item: $selectedAsNeededItem, onDismiss: { selectedAsNeededItem = nil }) { item in
-            MedicationQuickLogSection.AsNeededLogSheet(item: item) { amount, unit, timestamp in
-                logAsNeeded(item: item, amount: amount, unit: unit, timestamp: timestamp)
-            }
-        }
-        .sheet(item: $editingIntake, onDismiss: { editingIntake = nil }) { intake in
-            MedicationIntakeEditorView(intakeID: intake.objectID)
-        }
-        .confirmationDialog(
-            "Delete Dose?",
-            isPresented: $showingDeleteConfirmation,
-            presenting: pendingDeleteIntake
-        ) { intake in
-            Button("Delete", role: .destructive) {
-                delete(intake)
-            }
-        } message: { _ in
-            Text("This removes the logged medication from the journal.")
-        }
-        .alert("Unable to Delete", isPresented: Binding(get: { deletionError != nil }, set: { if $0 == false { deletionError = nil } })) {
-            Button("OK", role: .cancel) { deletionError = nil }
-        } message: {
-            Text(deletionError ?? "")
+            MedicationsView(journal: journal)
         }
     }
 
-    private var timelineSections: [DaySection] {
-        let calendar = Calendar.current
+    // MARK: - Grouping Helpers
 
-        let entryGroups = Dictionary(grouping: entries) { entry in
-            calendar.startOfDay(for: entry.timestampValue)
-        }
-        let intakeGroups = Dictionary(grouping: medicationIntakes) { intake in
-            calendar.startOfDay(for: intake.groupingDate)
-        }
+    private var calendar: Calendar { Calendar.current }
 
-        let allDates = Set(entryGroups.keys).union(Set(intakeGroups.keys))
-        guard allDates.isEmpty == false else { return [] }
-
-        let sortedDates = allDates.sorted(by: >)
-        return sortedDates.map { date in
-            let dayEntries = (entryGroups[date] ?? [])
-                .sorted(by: { $0.timestampValue > $1.timestampValue })
-            let dayIntakes = (intakeGroups[date] ?? [])
-                .sorted(by: { $0.timestampValue > $1.timestampValue })
-            return DaySection(date: date, entries: dayEntries, intakes: dayIntakes)
-        }
+    private var medicationsByID: [UUID: SQLiteMedication] {
+        Dictionary(uniqueKeysWithValues: medications.map { ($0.id, $0) })
     }
 
-    func logAsNeeded(item: MedicationTodayModel.AsNeededItem, amount: Decimal?, unit: String?, timestamp: Date) {
-        guard let medication = try? context.existingObject(with: item.id) as? Medication else {
-            asNeededLoggingError = "Unable to find medication"
-            return
-        }
-
-        let store = MedicationStore(context: context)
-        _ = store.logAsNeeded(medication, amount: amount, unit: unit, at: timestamp)
-
-        do {
-            try context.save()
-            asNeededLoggingError = nil
-            selectedAsNeededItem = nil
-            asNeededRefreshToken &+= 1
-        } catch {
-            context.rollback()
-            asNeededLoggingError = error.localizedDescription
-        }
+    private var entriesByDay: [Date: [SQLiteSymptomEntry]] {
+        Dictionary(grouping: entries) { calendar.startOfDay(for: $0.timestamp) }
     }
 
-    private func promptDelete(_ intake: MedicationIntake) {
-        pendingDeleteIntake = intake
-        showingDeleteConfirmation = true
+    private var relevantIntakes: [SQLiteMedicationIntake] {
+        let medIDs = Set(medications.map { $0.id })
+        return medicationIntakes.filter { medIDs.contains($0.medicationID) }
     }
 
-    private func delete(_ intake: MedicationIntake) {
-        pendingDeleteIntake = nil
-        context.perform {
-            if intake.managedObjectContext == nil {
-                return
-            }
-
-            context.delete(intake)
-            do {
-                try context.save()
-                deletionError = nil
-            } catch {
-                context.rollback()
-                deletionError = error.localizedDescription
-            }
-        }
+    private var intakesByDay: [Date: [SQLiteMedicationIntake]] {
+        Dictionary(grouping: relevantIntakes) { calendar.startOfDay(for: $0.timestamp) }
     }
 
-    private func toggleDayExpansion(_ date: Date) {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            if expandedDays.contains(date) {
-                expandedDays.remove(date)
-            } else {
-                expandedDays.insert(date)
-            }
-        }
+    private var dayKeys: [Date] {
+        let entryDays = Set(entriesByDay.keys)
+        let intakeDays = Set(intakesByDay.keys)
+        return Array(entryDays.union(intakeDays)).sorted(by: >)
     }
 }
 
-private struct DaySection: Identifiable {
+// MARK: - Rows & Detail Screens
+
+private struct DaySummaryRow: View {
     let date: Date
-    let entries: [SymptomEntry]
-    let intakes: [MedicationIntake]
-
-    var id: Date { date }
-}
-
-struct SymptomEntryRow: View {
-    let entry: SymptomEntry
+    let entries: [SQLiteSymptomEntry]
+    let intakes: [SQLiteMedicationIntake]
+    let medicationsByID: [UUID: SQLiteMedication]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(entry.timestampValue, format: .dateTime.hour().minute())
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-
-                if entry.isMenstruating {
-                    Text("MENSTRUATING")
-                        .font(.caption.bold())
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 2)
-                        .background(Color.brandAccent.opacity(0.18), in: Capsule())
-                        .foregroundStyle(Color.brandAccent)
-                }
-
+            HStack(alignment: .firstTextBaseline) {
+                Text(date, format: .dateTime.year().month().day())
+                    .font(.headline)
                 Spacer()
-
-                Text("Severity \(entry.severity)")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.brandAccent)
+                HStack(spacing: 6) {
+                    CountChip(system: "waveform.path.ecg", text: "\(entries.count)")
+                    CountChip(system: "pills.fill", text: "\(intakes.count)")
+                }
             }
 
-            if let note = entry.note, note.isEmpty == false {
-                Text(note)
-                    .font(.body)
-                    .foregroundStyle(Color.ink.opacity(0.75))
+            // Quick preview line(s)
+            if let preview = previewLine {
+                Text(preview)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
             }
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
+    }
+
+    private var previewLine: String? {
+        var parts: [String] = []
+        if let e = entries.first {
+            if let note = e.note, !note.isEmpty { parts.append(note) }
+            else { parts.append("Severity: \(e.severity)") }
+        }
+        if !intakes.isEmpty {
+            let names: [String] = intakes.prefix(3).compactMap { medicationsByID[$0.medicationID]?.name }
+            if !names.isEmpty { parts.append("Meds: " + names.joined(separator: ", ")) }
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " • ")
     }
 }
 
-private struct TimelineEmptyState: View {
-    let addAction: () -> Void
-
+private struct CountChip: View {
+    let system: String
+    let text: String
     var body: some View {
-        VStack(spacing: 12) {
-            Text("Start with today. Auralyst will trace the line.")
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            Button("Add First Entry", action: addAction)
-                .buttonStyle(.borderedProminent)
+        HStack(spacing: 4) {
+            Image(systemName: system)
+            Text(text)
         }
-        .padding(.vertical, 24)
+        .font(.caption2)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(.thinMaterial)
+        .clipShape(Capsule())
     }
 }
 
-private struct MedicationDaySummaryRow: View {
-    let intakes: [MedicationIntake]
-    let isExpanded: Bool
-    let toggle: () -> Void
+private struct DayDetailView: View {
+    let journal: SQLiteJournal
+    let date: Date
+    let entries: [SQLiteSymptomEntry]
+    let intakes: [SQLiteMedicationIntake]
+    let medicationsByID: [UUID: SQLiteMedication]
 
-    private var scheduledCount: Int {
-        intakes.filter { $0.originValue == .scheduled }.count
-    }
-
-    private var asNeededIntakes: [MedicationIntake] {
-        intakes.filter { $0.originValue == .asNeeded }
-            .sorted(by: { $0.timestampValue > $1.timestampValue })
-    }
-
-    private var manualCount: Int {
-        intakes.filter { $0.originValue == .manual }.count
-    }
-
-    private var summaryText: String {
-        var components: [String] = []
-        if scheduledCount > 0 {
-            components.append("\(scheduledCount) scheduled")
-        }
-        if asNeededIntakes.isEmpty == false {
-            components.append("\(asNeededIntakes.count) as needed")
-        }
-        if manualCount > 0 {
-            components.append("\(manualCount) manual")
-        }
-        if components.isEmpty {
-            components.append("No doses logged")
-        }
-        return components.joined(separator: " • ")
-    }
+    @State private var editingEntryID: UUID?
 
     var body: some View {
-        Button(action: toggle) {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Medications")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.ink)
-
-                    Text(summaryText)
-                        .font(.footnote)
+        List {
+            Section(header: Text("Symptoms")) {
+                if entries.isEmpty {
+                    Text("No symptom entries logged.")
                         .foregroundStyle(.secondary)
-
-                    if asNeededIntakes.isEmpty == false {
-                        HStack(spacing: 6) {
-                            ForEach(asNeededIntakes.prefix(3), id: \.objectID) { intake in
-                                Text(intake.timestampValue, format: .dateTime.hour().minute())
-                                    .font(.caption.bold())
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 2)
-                                    .background(Color.brandAccent.opacity(0.15), in: Capsule())
-                                    .foregroundStyle(Color.brandAccent)
+                } else {
+                    ForEach(entries) { entry in
+                        NavigationLink {
+                            SymptomEntryEditorView(entryID: entry.id)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text(entry.timestamp, style: .time)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Text("Severity: \(entry.severity)")
+                                        .font(.caption)
+                                }
+                                if let note = entry.note, !note.isEmpty {
+                                    Text(note)
+                                        .font(.subheadline)
+                                        .lineLimit(2)
+                                }
                             }
-                            if asNeededIntakes.count > 3 {
-                                Text("+\(asNeededIntakes.count - 3)")
-                                    .font(.caption.bold())
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 2)
-                                    .background(Color.brandAccent.opacity(0.12), in: Capsule())
-                                    .foregroundStyle(Color.brandAccent)
-                            }
+                            .padding(.vertical, 4)
                         }
                     }
                 }
-
-                Spacer()
-
-                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
             }
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Medications")
-        .accessibilityHint(isExpanded ? "Hide logged doses" : "Show logged doses")
-    }
-}
 
-private struct MedicationIntakeSummaryRow: View {
-    let intake: MedicationIntake
-
-    private static let numberFormatter: NumberFormatter = {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.maximumFractionDigits = 2
-        formatter.minimumFractionDigits = 0
-        return formatter
-    }()
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(intake.medication?.name ?? "Medication")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.ink)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    if let useCase = intake.medication?.useCaseLabel {
-                        Text(useCase)
-                            .font(.footnote)
-                            .foregroundStyle(Color.brandAccent)
-                    }
-
-                    let details = detailStrings()
-                    if details.isEmpty == false {
-                        Text(details.joined(separator: " • "))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+            Section(header: Text("Medications")) {
+                if intakes.isEmpty {
+                    Text("No medications logged.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(intakes) { intake in
+                        let med = medicationsByID[intake.medicationID]
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(med?.name ?? "Medication")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                HStack(spacing: 6) {
+                                    Text(intake.timestamp, style: .time)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    if let amount = intake.amount, let unit = intake.unit {
+                                        Text("\(amount.cleanAmount) \(unit)")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                if let notes = intake.notes, !notes.isEmpty {
+                                    Text(notes)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(3)
+                                }
+                            }
+                            Spacer()
+                        }
+                        .padding(.vertical, 4)
                     }
                 }
             }
+        }
+        .navigationTitle(date.formatted(date: .abbreviated, time: .omitted))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
 
-            Spacer()
+private struct SymptomEntryEditorView: View {
+    let entryID: UUID
 
-            VStack(alignment: .trailing, spacing: 4) {
-                Text(intake.timestampValue, format: .dateTime.hour().minute())
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+    @Environment(\.dismiss) private var dismiss
 
-                Text(intake.originDisplayName)
-                    .font(.caption.bold())
-                    .foregroundStyle(Color.brandAccent)
+    @State private var loaded = false
+    @State private var timestamp: Date = .now
+    @State private var overallSeverity: Int = 0
+    @State private var isMenstruating: Bool = false
+    @State private var note: String = ""
+    @State private var originalEntry: SQLiteSymptomEntry?
+
+    var body: some View {
+        Form {
+            Section("Severity") {
+                HStack {
+                    Text("Overall")
+                    Spacer()
+                    Text("\(overallSeverity)")
+                        .foregroundStyle(Color.brandAccent)
+                        .monospacedDigit()
+                }
+                Slider(value: Binding(
+                    get: { Double(overallSeverity) },
+                    set: { overallSeverity = Int($0.rounded()) }
+                ), in: 0...10, step: 1)
+            }
+
+            Section("Menstruation") {
+                Toggle("Menstruating", isOn: $isMenstruating)
+                    .toggleStyle(.switch)
+            }
+
+            Section("Note") {
+                TextEditor(text: $note)
+                    .frame(minHeight: 120)
+            }
+
+            Section("Timestamp") {
+                DatePicker("Logged At", selection: $timestamp, displayedComponents: [.date, .hourAndMinute])
             }
         }
-        .padding(.vertical, 4)
+        .navigationTitle("Edit Entry")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save") { save() }
+            }
+        }
+        .onAppear(perform: loadIfNeeded)
     }
 
-    private func detailStrings() -> [String] {
-        var components: [String] = []
-
-        if let scheduleLabel = intake.schedule?.label, scheduleLabel.isEmpty == false {
-            components.append(scheduleLabel)
-        }
-
-        if let amount = intake.amountValue {
-            let formatted = MedicationIntakeSummaryRow.numberFormatter.string(from: amount.nsDecimalNumber) ?? "\(amount)"
-            if let unit = intake.unit, unit.isEmpty == false {
-                components.append("\(formatted) \(unit)")
-            } else {
-                components.append(formatted)
+    private func loadIfNeeded() {
+        guard !loaded else { return }
+        loaded = true
+        @Dependency(\.defaultDatabase) var database
+        do {
+            if let entry = try database.read({ db in try SQLiteSymptomEntry.find(entryID).fetchOne(db) }) {
+                originalEntry = entry
+                timestamp = entry.timestamp
+                overallSeverity = Int(entry.severity)
+                isMenstruating = entry.isMenstruating ?? false
+                note = entry.note ?? ""
             }
-        } else if let unit = intake.unit, unit.isEmpty == false {
-            components.append(unit)
+        } catch {
+            print("Failed to load entry: \(error)")
+        }
+    }
+
+    private func save() {
+        @Dependency(\.defaultDatabase) var database
+        let noteParam = note.isEmpty ? nil : note
+        guard let entry = originalEntry else {
+            assertionFailure("Attempting to save a missing symptom entry")
+            return
         }
 
-        return components
+        let updatedEntry = SQLiteSymptomEntry(
+            id: entry.id,
+            timestamp: timestamp,
+            journalID: entry.journalID,
+            severity: Int16(overallSeverity),
+            headache: entry.headache,
+            nausea: entry.nausea,
+            anxiety: entry.anxiety,
+            isMenstruating: isMenstruating,
+            note: noteParam,
+            sentimentLabel: entry.sentimentLabel,
+            sentimentScore: entry.sentimentScore
+        )
+
+        do {
+            try database.write { db in
+                try SQLiteSymptomEntry.update(updatedEntry).execute(db)
+            }
+            dismiss()
+        } catch {
+            print("Failed to save entry: \(error)")
+        }
+    }
+}
+
+private extension Double {
+    var cleanAmount: String {
+        if floor(self) == self { return String(Int(self)) }
+        return String(self)
+    }
+}
+
+#Preview {
+    withPreviewDataStore { _ in
+        JournalEntriesView(
+            journal: SQLiteJournal(),
+            onAddEntry: {},
+            onShare: {},
+            onExport: {}
+        )
     }
 }

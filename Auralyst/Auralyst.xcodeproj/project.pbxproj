@@ -6,6 +6,26 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		1E7897FF325040FAB88F4D3E /* StructuredQueries in Frameworks */ = {isa = PBXBuildFile; productRef = 377E65324D0C4B118A946EEA /* StructuredQueries */; };
+		2F037933E8CA4E7AAFFFA747 /* ConcurrencyExtras in Frameworks */ = {isa = PBXBuildFile; productRef = 4322C53DA11047C39538CD13 /* ConcurrencyExtras */; };
+		32A34E2392D640AAACBCC9ED /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 9756EF6902FE41CC9C68AE13 /* GRDB */; };
+		3537792A8C0545FCB44A1C7E /* StructuredQueriesCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0C86FB43631C4C069AC99A47 /* StructuredQueriesCore */; };
+		4B1494397B214AFDA2F87940 /* Perception in Frameworks */ = {isa = PBXBuildFile; productRef = A30C1F5C9B9E43ECAE15F30A /* Perception */; };
+		56133DA03A0642FCA77EF34C /* Clocks in Frameworks */ = {isa = PBXBuildFile; productRef = 05C9F351223E4961A91EEDB5 /* Clocks */; };
+		707E5D4E44A342BB9A4776E0 /* IdentifiedCollections in Frameworks */ = {isa = PBXBuildFile; productRef = AAF52D2B42D14634B13A3B8A /* IdentifiedCollections */; };
+		94E7FE5A2E7F0B4400FC5984 /* SQLiteData in Frameworks */ = {isa = PBXBuildFile; productRef = 94E7FE592E7F0B4400FC5984 /* SQLiteData */; };
+		94E7FE5C2E7F0B4400FC5984 /* SQLiteDataTestSupport in Frameworks */ = {isa = PBXBuildFile; productRef = 94E7FE5B2E7F0B4400FC5984 /* SQLiteDataTestSupport */; };
+		9946E78FEC9849AAB72FE8AD /* CustomDump in Frameworks */ = {isa = PBXBuildFile; productRef = 06218A4890D14D0293558AF0 /* CustomDump */; };
+		9B94A4C20B0A4019ADEFDB59 /* CombineSchedulers in Frameworks */ = {isa = PBXBuildFile; productRef = 97DA449394A948E3AE756805 /* CombineSchedulers */; };
+		B30A1D17083C448F8E3D56C9 /* Sharing in Frameworks */ = {isa = PBXBuildFile; productRef = 5AF2024BEC7A428FAEE300B7 /* Sharing */; };
+		B8BC429DC2D24A6BA71C741D /* StructuredQueriesSQLite in Frameworks */ = {isa = PBXBuildFile; productRef = 81F9A8AEEAE04841A213E875 /* StructuredQueriesSQLite */; };
+		DD56DB4C75C743759FD6269E /* Dependencies in Frameworks */ = {isa = PBXBuildFile; productRef = 611B4ECF6D2C4D1A9063573E /* Dependencies */; };
+		E116584CB3F04C7E85C753A5 /* XCTestDynamicOverlay in Frameworks */ = {isa = PBXBuildFile; productRef = 93DB7E1280E249D7BC8BB4A8 /* XCTestDynamicOverlay */; };
+		F55340DDB3734157B0FE95A8 /* StructuredQueriesSQLiteCore in Frameworks */ = {isa = PBXBuildFile; productRef = 77C1EED9456B4A1F9413E5CB /* StructuredQueriesSQLiteCore */; };
+		F6833306C4504449949BDE67 /* OrderedCollections in Frameworks */ = {isa = PBXBuildFile; productRef = 47F91017A7314D8D8E068D86 /* OrderedCollections */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		94F521E42E7B358700DA1658 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -45,6 +65,16 @@
 			exceptions = (
 				94E7FE182E7B956000FC5984 /* Exceptions for "Auralyst" folder in "Auralyst" target */,
 			);
+			explicitFileTypes = {
+				"SQLiteDataDocs/Comparison with SwiftData.md" = net.daringfireball.markdown;
+				"SQLiteDataDocs/Dynamic queries.md" = net.daringfireball.markdown;
+				"SQLiteDataDocs/Fetching model data.md" = net.daringfireball.markdown;
+				"SQLiteDataDocs/Getting started with CloudKit.md" = net.daringfireball.markdown;
+				"SQLiteDataDocs/Observing changes to model data.md" = net.daringfireball.markdown;
+				"SQLiteDataDocs/Preparing a SQLite database.md" = net.daringfireball.markdown;
+				SQLiteDataDocs/SQLiteData.md = net.daringfireball.markdown;
+				"SQLiteDataDocs/Sharing data with other iCloud users.md" = net.daringfireball.markdown;
+			};
 			path = Auralyst;
 			sourceTree = "<group>";
 		};
@@ -65,6 +95,22 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				94E7FE5A2E7F0B4400FC5984 /* SQLiteData in Frameworks */,
+				9B94A4C20B0A4019ADEFDB59 /* CombineSchedulers in Frameworks */,
+				56133DA03A0642FCA77EF34C /* Clocks in Frameworks */,
+				F6833306C4504449949BDE67 /* OrderedCollections in Frameworks */,
+				2F037933E8CA4E7AAFFFA747 /* ConcurrencyExtras in Frameworks */,
+				9946E78FEC9849AAB72FE8AD /* CustomDump in Frameworks */,
+				DD56DB4C75C743759FD6269E /* Dependencies in Frameworks */,
+				707E5D4E44A342BB9A4776E0 /* IdentifiedCollections in Frameworks */,
+				4B1494397B214AFDA2F87940 /* Perception in Frameworks */,
+				B30A1D17083C448F8E3D56C9 /* Sharing in Frameworks */,
+				1E7897FF325040FAB88F4D3E /* StructuredQueries in Frameworks */,
+				3537792A8C0545FCB44A1C7E /* StructuredQueriesCore in Frameworks */,
+				B8BC429DC2D24A6BA71C741D /* StructuredQueriesSQLite in Frameworks */,
+				F55340DDB3734157B0FE95A8 /* StructuredQueriesSQLiteCore in Frameworks */,
+				32A34E2392D640AAACBCC9ED /* GRDB in Frameworks */,
+				E116584CB3F04C7E85C753A5 /* XCTestDynamicOverlay in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -72,6 +118,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				94E7FE5C2E7F0B4400FC5984 /* SQLiteDataTestSupport in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -125,6 +172,22 @@
 			);
 			name = Auralyst;
 			packageProductDependencies = (
+				94E7FE592E7F0B4400FC5984 /* SQLiteData */,
+				97DA449394A948E3AE756805 /* CombineSchedulers */,
+				05C9F351223E4961A91EEDB5 /* Clocks */,
+				47F91017A7314D8D8E068D86 /* OrderedCollections */,
+				4322C53DA11047C39538CD13 /* ConcurrencyExtras */,
+				06218A4890D14D0293558AF0 /* CustomDump */,
+				611B4ECF6D2C4D1A9063573E /* Dependencies */,
+				AAF52D2B42D14634B13A3B8A /* IdentifiedCollections */,
+				A30C1F5C9B9E43ECAE15F30A /* Perception */,
+				5AF2024BEC7A428FAEE300B7 /* Sharing */,
+				377E65324D0C4B118A946EEA /* StructuredQueries */,
+				0C86FB43631C4C069AC99A47 /* StructuredQueriesCore */,
+				81F9A8AEEAE04841A213E875 /* StructuredQueriesSQLite */,
+				77C1EED9456B4A1F9413E5CB /* StructuredQueriesSQLiteCore */,
+				9756EF6902FE41CC9C68AE13 /* GRDB */,
+				93DB7E1280E249D7BC8BB4A8 /* XCTestDynamicOverlay */,
 			);
 			productName = Auralyst;
 			productReference = 94F521D62E7B358600DA1658 /* Auralyst.app */;
@@ -148,6 +211,7 @@
 			);
 			name = AuralystTests;
 			packageProductDependencies = (
+				94E7FE5B2E7F0B4400FC5984 /* SQLiteDataTestSupport */,
 			);
 			productName = AuralystTests;
 			productReference = 94F521E32E7B358700DA1658 /* AuralystTests.xctest */;
@@ -208,6 +272,21 @@
 			);
 			mainGroup = 94F521CD2E7B358600DA1658;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				94E7FE582E7F0B4400FC5984 /* XCRemoteSwiftPackageReference "sqlite-data" */,
+				400B80F572214F43B9E2F725 /* XCRemoteSwiftPackageReference "combine-schedulers" */,
+				6695A1D0CF824048BE7178EA /* XCRemoteSwiftPackageReference "swift-clocks" */,
+				318D46169A6446C49D5D51B1 /* XCRemoteSwiftPackageReference "swift-collections" */,
+				23A0F0EE38E94B1AAA7ED122 /* XCRemoteSwiftPackageReference "swift-concurrency-extras" */,
+				4B745391AF6142C589C0C8F0 /* XCRemoteSwiftPackageReference "swift-custom-dump" */,
+				56108AA942D14934A20C9720 /* XCRemoteSwiftPackageReference "swift-dependencies" */,
+				54A154E0C4994C2E9B015205 /* XCRemoteSwiftPackageReference "swift-identified-collections" */,
+				37221A7D0D234AE195D55004 /* XCRemoteSwiftPackageReference "swift-perception" */,
+				F719FD0EEEA54FAC86521C1B /* XCRemoteSwiftPackageReference "swift-sharing" */,
+				62A7D8E728004DB5838A525D /* XCRemoteSwiftPackageReference "swift-structured-queries" */,
+				5A1546E6EE2F41469AD15965 /* XCRemoteSwiftPackageReference "GRDB" */,
+				98DF3E0E5D4F41C5A4CB4EF9 /* XCRemoteSwiftPackageReference "xctest-dynamic-overlay" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 94F521D72E7B358600DA1658 /* Products */;
 			projectDirPath = "";
@@ -426,7 +505,7 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
@@ -476,7 +555,7 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
@@ -506,7 +585,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 777XX46HDU;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ryanleewilliams.AuralystTests;
@@ -532,7 +611,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 777XX46HDU;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ryanleewilliams.AuralystTests;
@@ -557,8 +636,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 777XX46HDU;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				MACOSX_DEPLOYMENT_TARGET = 15.6;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ryanleewilliams.AuralystUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -571,7 +650,7 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
 				TEST_TARGET_NAME = Auralyst;
-				XROS_DEPLOYMENT_TARGET = 26.0;
+				XROS_DEPLOYMENT_TARGET = 2.6;
 			};
 			name = Debug;
 		};
@@ -582,8 +661,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 777XX46HDU;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				MACOSX_DEPLOYMENT_TARGET = 15.6;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ryanleewilliams.AuralystUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -596,7 +675,7 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
 				TEST_TARGET_NAME = Auralyst;
-				XROS_DEPLOYMENT_TARGET = 26.0;
+				XROS_DEPLOYMENT_TARGET = 2.6;
 			};
 			name = Release;
 		};
@@ -640,6 +719,201 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		23A0F0EE38E94B1AAA7ED122 /* XCRemoteSwiftPackageReference "swift-concurrency-extras" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pointfreeco/swift-concurrency-extras";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.3.2;
+			};
+		};
+		318D46169A6446C49D5D51B1 /* XCRemoteSwiftPackageReference "swift-collections" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-collections";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.2.1;
+			};
+		};
+		37221A7D0D234AE195D55004 /* XCRemoteSwiftPackageReference "swift-perception" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pointfreeco/swift-perception";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.8;
+			};
+		};
+		400B80F572214F43B9E2F725 /* XCRemoteSwiftPackageReference "combine-schedulers" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pointfreeco/combine-schedulers";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.3;
+			};
+		};
+		4B745391AF6142C589C0C8F0 /* XCRemoteSwiftPackageReference "swift-custom-dump" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pointfreeco/swift-custom-dump";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.3.3;
+			};
+		};
+		54A154E0C4994C2E9B015205 /* XCRemoteSwiftPackageReference "swift-identified-collections" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pointfreeco/swift-identified-collections";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.1.1;
+			};
+		};
+		56108AA942D14934A20C9720 /* XCRemoteSwiftPackageReference "swift-dependencies" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pointfreeco/swift-dependencies";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.9.5;
+			};
+		};
+		5A1546E6EE2F41469AD15965 /* XCRemoteSwiftPackageReference "GRDB" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/groue/GRDB.swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.6.1;
+			};
+		};
+		62A7D8E728004DB5838A525D /* XCRemoteSwiftPackageReference "swift-structured-queries" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pointfreeco/swift-structured-queries";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.20.0;
+			};
+		};
+		6695A1D0CF824048BE7178EA /* XCRemoteSwiftPackageReference "swift-clocks" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pointfreeco/swift-clocks";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.6;
+			};
+		};
+		94E7FE582E7F0B4400FC5984 /* XCRemoteSwiftPackageReference "sqlite-data" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pointfreeco/sqlite-data";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.0;
+			};
+		};
+		98DF3E0E5D4F41C5A4CB4EF9 /* XCRemoteSwiftPackageReference "xctest-dynamic-overlay" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pointfreeco/xctest-dynamic-overlay";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.6.1;
+			};
+		};
+		F719FD0EEEA54FAC86521C1B /* XCRemoteSwiftPackageReference "swift-sharing" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pointfreeco/swift-sharing";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.7.4;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		05C9F351223E4961A91EEDB5 /* Clocks */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6695A1D0CF824048BE7178EA /* XCRemoteSwiftPackageReference "swift-clocks" */;
+			productName = Clocks;
+		};
+		06218A4890D14D0293558AF0 /* CustomDump */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4B745391AF6142C589C0C8F0 /* XCRemoteSwiftPackageReference "swift-custom-dump" */;
+			productName = CustomDump;
+		};
+		0C86FB43631C4C069AC99A47 /* StructuredQueriesCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 62A7D8E728004DB5838A525D /* XCRemoteSwiftPackageReference "swift-structured-queries" */;
+			productName = StructuredQueriesCore;
+		};
+		377E65324D0C4B118A946EEA /* StructuredQueries */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 62A7D8E728004DB5838A525D /* XCRemoteSwiftPackageReference "swift-structured-queries" */;
+			productName = StructuredQueries;
+		};
+		4322C53DA11047C39538CD13 /* ConcurrencyExtras */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 23A0F0EE38E94B1AAA7ED122 /* XCRemoteSwiftPackageReference "swift-concurrency-extras" */;
+			productName = ConcurrencyExtras;
+		};
+		47F91017A7314D8D8E068D86 /* OrderedCollections */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 318D46169A6446C49D5D51B1 /* XCRemoteSwiftPackageReference "swift-collections" */;
+			productName = OrderedCollections;
+		};
+		5AF2024BEC7A428FAEE300B7 /* Sharing */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F719FD0EEEA54FAC86521C1B /* XCRemoteSwiftPackageReference "swift-sharing" */;
+			productName = Sharing;
+		};
+		611B4ECF6D2C4D1A9063573E /* Dependencies */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 56108AA942D14934A20C9720 /* XCRemoteSwiftPackageReference "swift-dependencies" */;
+			productName = Dependencies;
+		};
+		77C1EED9456B4A1F9413E5CB /* StructuredQueriesSQLiteCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 62A7D8E728004DB5838A525D /* XCRemoteSwiftPackageReference "swift-structured-queries" */;
+			productName = StructuredQueriesSQLiteCore;
+		};
+		81F9A8AEEAE04841A213E875 /* StructuredQueriesSQLite */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 62A7D8E728004DB5838A525D /* XCRemoteSwiftPackageReference "swift-structured-queries" */;
+			productName = StructuredQueriesSQLite;
+		};
+		93DB7E1280E249D7BC8BB4A8 /* XCTestDynamicOverlay */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 98DF3E0E5D4F41C5A4CB4EF9 /* XCRemoteSwiftPackageReference "xctest-dynamic-overlay" */;
+			productName = XCTestDynamicOverlay;
+		};
+		94E7FE592E7F0B4400FC5984 /* SQLiteData */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 94E7FE582E7F0B4400FC5984 /* XCRemoteSwiftPackageReference "sqlite-data" */;
+			productName = SQLiteData;
+		};
+		94E7FE5B2E7F0B4400FC5984 /* SQLiteDataTestSupport */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 94E7FE582E7F0B4400FC5984 /* XCRemoteSwiftPackageReference "sqlite-data" */;
+			productName = SQLiteDataTestSupport;
+		};
+		9756EF6902FE41CC9C68AE13 /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5A1546E6EE2F41469AD15965 /* XCRemoteSwiftPackageReference "GRDB" */;
+			productName = GRDB;
+		};
+		97DA449394A948E3AE756805 /* CombineSchedulers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 400B80F572214F43B9E2F725 /* XCRemoteSwiftPackageReference "combine-schedulers" */;
+			productName = CombineSchedulers;
+		};
+		A30C1F5C9B9E43ECAE15F30A /* Perception */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 37221A7D0D234AE195D55004 /* XCRemoteSwiftPackageReference "swift-perception" */;
+			productName = Perception;
+		};
+		AAF52D2B42D14634B13A3B8A /* IdentifiedCollections */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 54A154E0C4994C2E9B015205 /* XCRemoteSwiftPackageReference "swift-identified-collections" */;
+			productName = IdentifiedCollections;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 94F521CE2E7B358600DA1658 /* Project object */;
 }
