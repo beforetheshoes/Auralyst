@@ -16,6 +16,7 @@ jobs:
       SWIFT_FLAGS: -enable-experimental-feature Macros
       SWIFTPM_ENABLE_MACROS: 1
       SWIFTPM_EXPERIMENTAL_FEATURES: Macros
+      SWIFT_BUILD_ENABLE_PLUGIN_AUTO_TRUST: 1
 
     steps:
       - name: Checkout
