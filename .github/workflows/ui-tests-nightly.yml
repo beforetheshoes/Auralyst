@@ -13,6 +13,8 @@ jobs:
       SWIFT_ENABLE_EXPERIMENTAL_FEATURES: Macros
       SWIFT_EXPERIMENTAL_FEATURES: Macros
       SWIFT_FLAGS: -enable-experimental-feature Macros
+      SWIFTPM_ENABLE_MACROS: 1
+      SWIFTPM_EXPERIMENTAL_FEATURES: Macros
 
     steps:
       - name: Checkout
