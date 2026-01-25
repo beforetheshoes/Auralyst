@@ -10,6 +10,10 @@ jobs:
   build:
     name: Build and Test default scheme using any available iPhone simulator
     runs-on: macos-15
+    env:
+      SWIFT_ENABLE_EXPERIMENTAL_FEATURES: Macros
+      SWIFT_EXPERIMENTAL_FEATURES: Macros
+      SWIFT_FLAGS: -enable-experimental-feature Macros
 
     steps:
       - name: Checkout

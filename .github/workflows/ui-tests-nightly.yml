@@ -9,6 +9,10 @@ jobs:
   ui-tests:
     name: Run UI tests on simulator
     runs-on: macos-15
+    env:
+      SWIFT_ENABLE_EXPERIMENTAL_FEATURES: Macros
+      SWIFT_EXPERIMENTAL_FEATURES: Macros
+      SWIFT_FLAGS: -enable-experimental-feature Macros
 
     steps:
       - name: Checkout
