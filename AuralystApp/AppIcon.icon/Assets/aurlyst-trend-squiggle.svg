@@ -1,0 +1,13 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Dark theme: deep surface, lighter gradients for contrast, slightly stronger line opacity -->
+  <defs>
+    <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"  style="stop-color:#60A5FA;stop-opacity:0.55"/>
+      <stop offset="100%" style="stop-color:#A78BFA;stop-opacity:0.55"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Subtle trend squiggle -->
+  <polyline points="66,110 85,115 100,108 115,115 134,110"
+            stroke="url(#lineGradient)" stroke-width="1.5" fill="none" opacity="0.65"/>
+</svg>

@@ -6,6 +6,15 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		9476ADF92F25348C001C0015 /* CasePaths in Frameworks */ = {isa = PBXBuildFile; productRef = 9476ADF82F25348C001C0015 /* CasePaths */; };
+		9476AE022F253632001C0015 /* SwiftNavigation in Frameworks */ = {isa = PBXBuildFile; productRef = 9476AE012F253632001C0015 /* SwiftNavigation */; };
+		94DC69892EDCB06E0078320F /* SQLiteData in Frameworks */ = {isa = PBXBuildFile; productRef = 94DC69882EDCB06E0078320F /* SQLiteData */; };
+		94DC698B2EDCB06E0078320F /* SQLiteDataTestSupport in Frameworks */ = {isa = PBXBuildFile; productRef = 94DC698A2EDCB06E0078320F /* SQLiteDataTestSupport */; };
+		94DC699C2F0000000078320F /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = 94DC699B2F0000000078320F /* ComposableArchitecture */; };
+		94DC699D2F0000000078320F /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = 94DC699B2F0000000078320F /* ComposableArchitecture */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		94DC68D72EDCAEC20078320F /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +61,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				94DC699C2F0000000078320F /* ComposableArchitecture in Frameworks */,
+				94DC69892EDCB06E0078320F /* SQLiteData in Frameworks */,
+				9476AE022F253632001C0015 /* SwiftNavigation in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -59,6 +71,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				94DC699D2F0000000078320F /* ComposableArchitecture in Frameworks */,
+				94DC698B2EDCB06E0078320F /* SQLiteDataTestSupport in Frameworks */,
+				9476ADF92F25348C001C0015 /* CasePaths in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -72,12 +87,20 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		9476ADF72F25348C001C0015 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		94DC68C02EDCAEC00078320F = {
 			isa = PBXGroup;
 			children = (
 				94DC68CB2EDCAEC00078320F /* AuralystApp */,
 				94DC68D92EDCAEC20078320F /* AuralystAppTests */,
 				94DC68E32EDCAEC20078320F /* AuralystAppUITests */,
+				9476ADF72F25348C001C0015 /* Frameworks */,
 				94DC68CA2EDCAEC00078320F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -112,6 +135,9 @@
 			);
 			name = AuralystApp;
 			packageProductDependencies = (
+				94DC699B2F0000000078320F /* ComposableArchitecture */,
+				94DC69882EDCB06E0078320F /* SQLiteData */,
+				9476AE012F253632001C0015 /* SwiftNavigation */,
 			);
 			productName = AuralystApp;
 			productReference = 94DC68C92EDCAEC00078320F /* AuralystApp.app */;
@@ -135,6 +161,9 @@
 			);
 			name = AuralystAppTests;
 			packageProductDependencies = (
+				94DC699B2F0000000078320F /* ComposableArchitecture */,
+				94DC698A2EDCB06E0078320F /* SQLiteDataTestSupport */,
+				9476ADF82F25348C001C0015 /* CasePaths */,
 			);
 			productName = AuralystAppTests;
 			productReference = 94DC68D62EDCAEC20078320F /* AuralystAppTests.xctest */;
@@ -171,7 +200,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2610;
-				LastUpgradeCheck = 2610;
+				LastUpgradeCheck = 2620;
 				TargetAttributes = {
 					94DC68C82EDCAEC00078320F = {
 						CreatedOnToolsVersion = 26.1.1;
@@ -195,6 +224,12 @@
 			);
 			mainGroup = 94DC68C02EDCAEC00078320F;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				94DC69872EDCB06E0078320F /* XCRemoteSwiftPackageReference "sqlite-data" */,
+				94DC699A2F0000000078320F /* XCRemoteSwiftPackageReference "swift-composable-architecture" */,
+				9476ADF62F2532A7001C0015 /* XCRemoteSwiftPackageReference "swift-case-paths" */,
+				9476AE002F253598001C0015 /* XCRemoteSwiftPackageReference "swift-navigation" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 94DC68CA2EDCAEC00078320F /* Products */;
 			projectDirPath = "";
@@ -303,6 +338,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 777XX46HDU;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -326,6 +362,7 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -365,6 +402,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 777XX46HDU;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -381,6 +419,7 @@
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 			};
 			name = Release;
@@ -390,8 +429,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = AuralystApp/AuralystApp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 777XX46HDU;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -420,10 +461,11 @@
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = none;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = minimal;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
 				XROS_DEPLOYMENT_TARGET = 26.1;
 			};
@@ -434,8 +476,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = AuralystApp/AuralystApp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 777XX46HDU;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -464,10 +508,11 @@
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = none;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = minimal;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
 				XROS_DEPLOYMENT_TARGET = 26.1;
 			};
@@ -479,6 +524,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 777XX46HDU;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
@@ -491,8 +537,9 @@
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = minimal;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AuralystApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/AuralystApp";
 				XROS_DEPLOYMENT_TARGET = 26.1;
@@ -505,6 +552,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 777XX46HDU;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
@@ -517,8 +565,9 @@
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = minimal;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AuralystApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/AuralystApp";
 				XROS_DEPLOYMENT_TARGET = 26.1;
@@ -530,6 +579,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 777XX46HDU;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
@@ -542,8 +592,9 @@
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = minimal;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
 				TEST_TARGET_NAME = AuralystApp;
 				XROS_DEPLOYMENT_TARGET = 26.1;
@@ -555,6 +606,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 777XX46HDU;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
@@ -567,8 +619,9 @@
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = minimal;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
 				TEST_TARGET_NAME = AuralystApp;
 				XROS_DEPLOYMENT_TARGET = 26.1;
@@ -615,6 +668,69 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		9476ADF62F2532A7001C0015 /* XCRemoteSwiftPackageReference "swift-case-paths" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pointfreeco/swift-case-paths";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.7.2;
+			};
+		};
+		9476AE002F253598001C0015 /* XCRemoteSwiftPackageReference "swift-navigation" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pointfreeco/swift-navigation";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.6.0;
+			};
+		};
+		94DC69872EDCB06E0078320F /* XCRemoteSwiftPackageReference "sqlite-data" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pointfreeco/sqlite-data";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.5.0;
+			};
+		};
+		94DC699A2F0000000078320F /* XCRemoteSwiftPackageReference "swift-composable-architecture" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pointfreeco/swift-composable-architecture";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.23.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		9476ADF82F25348C001C0015 /* CasePaths */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9476ADF62F2532A7001C0015 /* XCRemoteSwiftPackageReference "swift-case-paths" */;
+			productName = CasePaths;
+		};
+		9476AE012F253632001C0015 /* SwiftNavigation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9476AE002F253598001C0015 /* XCRemoteSwiftPackageReference "swift-navigation" */;
+			productName = SwiftNavigation;
+		};
+		94DC69882EDCB06E0078320F /* SQLiteData */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 94DC69872EDCB06E0078320F /* XCRemoteSwiftPackageReference "sqlite-data" */;
+			productName = SQLiteData;
+		};
+		94DC698A2EDCB06E0078320F /* SQLiteDataTestSupport */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 94DC69872EDCB06E0078320F /* XCRemoteSwiftPackageReference "sqlite-data" */;
+			productName = SQLiteDataTestSupport;
+		};
+		94DC699B2F0000000078320F /* ComposableArchitecture */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 94DC699A2F0000000078320F /* XCRemoteSwiftPackageReference "swift-composable-architecture" */;
+			productName = ComposableArchitecture;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 94DC68C12EDCAEC00078320F /* Project object */;
 }

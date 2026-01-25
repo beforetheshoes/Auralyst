@@ -27,15 +27,20 @@ final class AuralystAppUITests: XCTestCase {
         // UI tests must launch the application that they test.
         let app = XCUIApplication()
         app.launch()
+        app.terminate()
 
         // Use XCTAssert and related functions to verify your tests produce the correct results.
     }
 
     @MainActor
     func testLaunchPerformance() throws {
-        // This measures how long it takes to launch your application.
+        guard ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != nil else {
+            throw XCTSkip("Performance launch test runs only on simulator.")
+        }
         measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
+            let app = XCUIApplication()
+            app.launch()
+            app.terminate()
         }
     }
 }
