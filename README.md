@@ -56,3 +56,4 @@ UI tests run as part of the same scheme. The launch performance test runs only o
 
 - CloudKit sync is configured in `AuralystApp/App/AppBootstrap.swift`.
 - SQLiteData is pinned via SwiftPM in the Xcode project.
+- CI workflows are currently manual-only because GitHub-hosted runners block SwiftPM macro plugins; run tests locally with Xcode 26.2.
