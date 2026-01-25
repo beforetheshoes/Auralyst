@@ -43,6 +43,7 @@ Workflows (GitHub Actions):
 - `ios.yml`: unit tests (skips UI tests)
 - `xcode-build-analyze.yml`: build + analyze
 - `ui-tests-nightly.yml`: nightly UI tests + manual trigger
+CI is currently manual-only (`workflow_dispatch`) because GitHub-hosted runners block SwiftPM macro plugins; run tests locally with Xcode 26.2.
 
 ## Repo layout notes
 - App code in `AuralystApp/`
@@ -51,6 +52,9 @@ Workflows (GitHub Actions):
 
 ## GitHub issues
 Use labels for priority (`P0`, `P1`, `P2`, `P3`) and category tags (`ui`, `performance`, `sqlite-data`, `sync`, `tests`, etc.).
+
+## Git workflow
+- Work on feature branches and open PRs; do not push directly to `main`.
 
 ## Environment flags / behavior
 - Sync is disabled for tests and enabled for normal runs.
