@@ -38,9 +38,7 @@ struct MedicationQuickLogFeature {
                         .loadResponse(
                             TaskResult {
                                 let loader = MedicationQuickLogLoader()
-                                return try await MainActor.run {
-                                    try loader.load(journalID: journalID, on: date)
-                                }
+                                return try loader.load(journalID: journalID, on: date)
                             }
                         )
                     )

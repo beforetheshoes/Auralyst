@@ -44,4 +44,23 @@ struct MedicationQuickLogLoaderSuite {
         #expect(loadedSchedules?.count == 1)
         #expect(loadedSchedules?.first?.label == "Morning")
     }
+
+    @Test("Loads snapshot from a detached task")
+    func loaderRunsOffMainActor() async throws {
+        let result = try await Task.detached {
+            try await withDependencies {
+                $0.context = .test
+                try $0.bootstrapDatabase(configureSyncEngine: false)
+            } operation: {
+                @Dependency(\.databaseClient) var databaseClient
+                let journal = databaseClient.createJournal()
+                let medication = databaseClient.createMedication(journal, "Melatonin", 3, "mg")
+                let loader = MedicationQuickLogLoader()
+                let snapshot = try loader.load(journalID: journal.id, on: Date())
+                return (snapshot, medication.id)
+            }
+        }.value
+
+        #expect(result.0.medications.contains(where: { $0.id == result.1 }))
+    }
 }
