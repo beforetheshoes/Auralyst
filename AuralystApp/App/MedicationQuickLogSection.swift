@@ -44,14 +44,14 @@ struct MedicationQuickLogSection: View {
                                                     schedule: sched,
                                                     medication: med,
                                                     selectedDate: viewStore.selectedDate,
-                                                    onRefresh: { viewStore.send(.refresh) }
+                                                    onRefresh: { viewStore.send(.refreshRequested) }
                                                 )
                                             } else {
                                                 unlogScheduledDose(
                                                     schedule: sched,
                                                     selectedDate: viewStore.selectedDate,
                                                     snapshot: viewStore.snapshot,
-                                                    onRefresh: { viewStore.send(.refresh) }
+                                                    onRefresh: { viewStore.send(.refreshRequested) }
                                                 )
                                             }
                                         }
@@ -96,12 +96,6 @@ struct MedicationQuickLogSection: View {
                 }
             }
             .task { viewStore.send(.task) }
-            .onReceive(NotificationCenter.default.publisher(for: .medicationsDidChange)) { _ in
-                viewStore.send(.refresh)
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .medicationIntakesDidChange)) { _ in
-                viewStore.send(.refresh)
-            }
         }
     }
 

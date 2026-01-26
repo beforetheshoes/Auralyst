@@ -76,6 +76,7 @@ func prepareTestDependencies(_ configure: (inout DependencyValues) throws -> Voi
     try prepareDependencies {
         try $0.bootstrapDatabase(configureSyncEngine: true)
         $0.date = .constant(Date(timeIntervalSince1970: 1_700_000_000))
+        $0.continuousClock = ContinuousClock()
         $0.syncEngine = SyncEngineClient(
             start: {},
             stop: {},
