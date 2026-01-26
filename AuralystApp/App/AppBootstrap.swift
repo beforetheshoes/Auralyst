@@ -23,6 +23,7 @@ struct AppBootstrap {
     static func initializeEnvironment(isRunningTests: Bool) {
         prepareDependencies {
             try! $0.bootstrapDatabase(configureSyncEngine: !isRunningTests)
+            resetForUITests(using: &$0)
             seedAutomationFixtures(using: &$0)
         }
 
@@ -49,6 +50,18 @@ private extension AppBootstrap {
             seedAsNeededFixture(using: &dependencies)
         default:
             break
+        }
+    }
+
+    static func resetForUITests(using dependencies: inout DependencyValues) {
+        guard ProcessInfo.processInfo.environment["AURALYST_UI_RESET"] == "1" else { return }
+        do {
+            let database = dependencies.defaultDatabase
+            try database.write { db in
+                try SQLiteJournal.delete().execute(db)
+            }
+        } catch {
+            // Best-effort cleanup for UI automation.
         }
     }
 
