@@ -8,6 +8,11 @@
 import XCTest
 
 final class AuralystAppUITests: XCTestCase {
+    private func makeApp() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchEnvironment["AURALYST_UI_RESET"] = "1"
+        return app
+    }
 
     override func setUpWithError() throws {
         // Put setup code here. This method is called before the invocation of each test method in the class.
@@ -25,9 +30,8 @@ final class AuralystAppUITests: XCTestCase {
     @MainActor
     func testExample() throws {
         // UI tests must launch the application that they test.
-        let app = XCUIApplication()
+        let app = makeApp()
         app.launch()
-        app.terminate()
 
         // Use XCTAssert and related functions to verify your tests produce the correct results.
     }
@@ -38,9 +42,7 @@ final class AuralystAppUITests: XCTestCase {
             throw XCTSkip("Performance launch test runs only on simulator.")
         }
         measure(metrics: [XCTApplicationLaunchMetric()]) {
-            let app = XCUIApplication()
-            app.launch()
-            app.terminate()
+            makeApp().launch()
         }
     }
 }

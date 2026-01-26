@@ -99,4 +99,117 @@ struct DataExporterSuite {
         #expect(csvString.contains("symptom_entries"))
         #expect(csvString.contains("Severe headache"))
     }
+
+    @MainActor
+    @Test("Summary counts ignore records from other journals")
+    func summaryFiltersByJournal() throws {
+        try prepareTestDependencies()
+
+        let store = DataStore()
+        let journalA = store.createJournal()
+        let journalB = store.createJournal()
+
+        _ = try store.createSymptomEntry(for: journalA, severity: 2)
+        _ = try store.createSymptomEntry(for: journalB, severity: 9)
+
+        let medicationA = store.createMedication(for: journalA, name: "Aspirin", defaultAmount: 1, defaultUnit: "tablet")
+        let medicationB = store.createMedication(for: journalB, name: "Magnesium", defaultAmount: 2, defaultUnit: "capsule")
+
+        _ = try store.createMedicationIntake(for: medicationA, amount: 1, unit: "tablet")
+        _ = try store.createMedicationIntake(for: medicationB, amount: 2, unit: "capsule")
+
+        @Dependency(\.defaultDatabase) var database
+        let scheduleA = SQLiteMedicationSchedule(
+            medicationID: medicationA.id,
+            label: "Morning",
+            amount: 1,
+            unit: "tablet",
+            cadence: "daily",
+            interval: 1,
+            daysOfWeekMask: MedicationWeekday.mask(for: MedicationWeekday.allCases),
+            hour: 8,
+            minute: 0,
+            isActive: true,
+            sortOrder: 0
+        )
+        let scheduleB = SQLiteMedicationSchedule(
+            medicationID: medicationB.id,
+            label: "Evening",
+            amount: 2,
+            unit: "capsule",
+            cadence: "daily",
+            interval: 1,
+            daysOfWeekMask: MedicationWeekday.mask(for: MedicationWeekday.allCases),
+            hour: 20,
+            minute: 0,
+            isActive: true,
+            sortOrder: 0
+        )
+        try insertSchedule(scheduleA, database: database)
+        try insertSchedule(scheduleB, database: database)
+
+        let summary = try DataExporter.exportSummary(for: journalA)
+        #expect(summary.exportedEntries == 1)
+        #expect(summary.exportedMedications == 1)
+        #expect(summary.exportedSchedules == 1)
+        #expect(summary.exportedIntakes == 1)
+    }
+
+    @MainActor
+    @Test("JSON export includes only intakes and schedules for the journal")
+    func jsonExportFiltersIntakesAndSchedules() throws {
+        try prepareTestDependencies()
+
+        let store = DataStore()
+        let journalA = store.createJournal()
+        let journalB = store.createJournal()
+
+        let medicationA = store.createMedication(for: journalA, name: "Cetirizine", defaultAmount: 10, defaultUnit: "mg")
+        let medicationB = store.createMedication(for: journalB, name: "Zinc", defaultAmount: 1, defaultUnit: "tablet")
+
+        _ = try store.createMedicationIntake(for: medicationA, amount: 1, unit: "tablet")
+        _ = try store.createMedicationIntake(for: medicationA, amount: 2, unit: "tablet")
+        _ = try store.createMedicationIntake(for: medicationB, amount: 1, unit: "tablet")
+
+        @Dependency(\.defaultDatabase) var database
+        let scheduleA = SQLiteMedicationSchedule(
+            medicationID: medicationA.id,
+            label: "Noon",
+            amount: 1,
+            unit: "tablet",
+            cadence: "daily",
+            interval: 1,
+            daysOfWeekMask: MedicationWeekday.mask(for: MedicationWeekday.allCases),
+            hour: 12,
+            minute: 0,
+            isActive: true,
+            sortOrder: 0
+        )
+        let scheduleB = SQLiteMedicationSchedule(
+            medicationID: medicationB.id,
+            label: "Night",
+            amount: 1,
+            unit: "tablet",
+            cadence: "daily",
+            interval: 1,
+            daysOfWeekMask: MedicationWeekday.mask(for: MedicationWeekday.allCases),
+            hour: 22,
+            minute: 0,
+            isActive: true,
+            sortOrder: 0
+        )
+        try insertSchedule(scheduleA, database: database)
+        try insertSchedule(scheduleB, database: database)
+
+        let jsonData = try DataExporter.exportJSON(for: journalA)
+        let object = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
+        let intakes = object? ["intakes"] as? [[String: Any]]
+        let schedules = object? ["schedules"] as? [[String: Any]]
+        let summary = object? ["summary"] as? [String: Any]
+
+        #expect(intakes?.count == 2)
+        #expect(schedules?.count == 1)
+        #expect((summary? ["exportedIntakes"] as? Int) == 2)
+        #expect((summary? ["exportedSchedules"] as? Int) == 1)
+    }
 }
