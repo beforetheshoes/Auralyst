@@ -2,10 +2,11 @@ import Foundation
 import Testing
 import Observation
 import Dependencies
+import GRDB
 @preconcurrency import SQLiteData
 @testable import AuralystApp
 
-@Suite("DataStore SQLiteData integration")
+@Suite("DataStore SQLiteData integration", .serialized)
 struct DataStoreSuite {
     @MainActor
     @Test("DataStore adopts Observation")
@@ -149,21 +150,127 @@ struct DataStoreSuite {
         #expect(remainingMedications.isEmpty)
 
         let remainingScheduleCount = try database.read { db in
-            try Int.fetchOne(
-                db,
-                sql: "SELECT COUNT(*) FROM sqLiteMedicationSchedule WHERE medicationID = ?",
-                arguments: [medication.id.uuidString]
-            ) ?? 0
+            try SQLiteMedicationScheduleRow
+                .filter(Column("medicationID") == medication.id.uuidString)
+                .fetchCount(db)
         }
         #expect(remainingScheduleCount == 0)
 
         let remainingIntakeCount = try database.read { db in
-            try Int.fetchOne(
-                db,
-                sql: "SELECT COUNT(*) FROM sqLiteMedicationIntake WHERE medicationID = ?",
-                arguments: [medication.id.uuidString]
-            ) ?? 0
+            try SQLiteMedicationIntakeRow
+                .filter(Column("medicationID") == medication.id.uuidString)
+                .fetchCount(db)
         }
         #expect(remainingIntakeCount == 0)
+    }
+
+    @MainActor
+    @Test("Insert helpers persist linkage metadata")
+    func insertHelpersPersistLinkageMetadata() throws {
+        try prepareTestDependencies()
+
+        @Dependency(\.defaultDatabase) var database
+
+        let store = DataStore()
+        let journal = store.createJournal()
+        let entry = try store.createSymptomEntry(for: journal, severity: 2)
+        let medication = store.createMedication(
+            for: journal,
+            name: "Vitamin D",
+            defaultAmount: 1,
+            defaultUnit: "capsule"
+        )
+
+        let schedule = SQLiteMedicationSchedule(
+            medicationID: medication.id,
+            label: "Breakfast",
+            amount: 1,
+            unit: "capsule",
+            cadence: "daily",
+            interval: 1,
+            daysOfWeekMask: MedicationWeekday.mask(for: MedicationWeekday.allCases),
+            hour: 8,
+            minute: 15,
+            timeZoneIdentifier: "America/New_York",
+            startDate: Date(timeIntervalSince1970: 1_726_500_000),
+            isActive: true,
+            sortOrder: 2
+        )
+        try insertSchedule(schedule, database: database)
+
+        let intake = SQLiteMedicationIntake(
+            id: UUID(),
+            medicationID: medication.id,
+            entryID: entry.id,
+            scheduleID: schedule.id,
+            amount: 1,
+            unit: "capsule",
+            timestamp: Date(timeIntervalSince1970: 1_726_500_600),
+            scheduledDate: Date(timeIntervalSince1970: 1_726_500_000),
+            origin: "scheduled",
+            notes: "Morning dose"
+        )
+        try insertIntake(intake, database: database)
+
+        let (reloadedSchedule, reloadedIntake) = try database.read { db in
+            let scheduleRows = try SQLiteMedicationScheduleRow.fetchAll(db)
+            let intakeRows = try SQLiteMedicationIntakeRow.fetchAll(db)
+            let scheduleRow = scheduleRows.first {
+                $0.id.lowercased() == schedule.id.uuidString.lowercased()
+            }
+            let intakeRow = intakeRows.first {
+                $0.id.lowercased() == intake.id.uuidString.lowercased()
+            }
+            return (scheduleRow, intakeRow)
+        }
+
+        #expect(reloadedSchedule?.label == schedule.label)
+        #expect(reloadedSchedule?.hour == schedule.hour)
+        #expect(reloadedSchedule?.minute == schedule.minute)
+        #expect(reloadedSchedule?.timeZoneIdentifier == schedule.timeZoneIdentifier)
+        #expect(reloadedSchedule?.startDate != nil)
+
+        #expect(reloadedIntake?.entryID?.lowercased() == entry.id.uuidString.lowercased())
+        #expect(reloadedIntake?.scheduleID?.lowercased() == schedule.id.uuidString.lowercased())
+        #expect(reloadedIntake?.origin == intake.origin)
+        #expect(reloadedIntake?.scheduledDate != nil)
+    }
+}
+
+private struct SQLiteMedicationScheduleRow: FetchableRecord, TableRecord {
+    static let databaseTableName = "sqLiteMedicationSchedule"
+
+    let id: String
+    let label: String?
+    let hour: Int16?
+    let minute: Int16?
+    let timeZoneIdentifier: String?
+    let startDate: String?
+
+    init(row: Row) throws {
+        id = row["id"]
+        label = row["label"]
+        hour = row["hour"]
+        minute = row["minute"]
+        timeZoneIdentifier = row["timeZoneIdentifier"]
+        startDate = row["startDate"]
+    }
+}
+
+private struct SQLiteMedicationIntakeRow: FetchableRecord, TableRecord {
+    static let databaseTableName = "sqLiteMedicationIntake"
+
+    let id: String
+    let entryID: String?
+    let scheduleID: String?
+    let origin: String?
+    let scheduledDate: String?
+
+    init(row: Row) throws {
+        id = row["id"]
+        entryID = row["entryID"]
+        scheduleID = row["scheduleID"]
+        origin = row["origin"]
+        scheduledDate = row["scheduledDate"]
     }
 }

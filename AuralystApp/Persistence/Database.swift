@@ -136,3 +136,88 @@ func appDatabase() throws -> any DatabaseWriter {
 }
 
 // Avoid MainActor logger in nonisolated contexts; use print for now.
+
+#if DEBUG
+/// Insert helpers that go through SQLiteData so sync metadata is updated in tests.
+func insertSchedule(_ schedule: SQLiteMedicationSchedule, database: any DatabaseWriter) throws {
+    try database.write { db in
+        try insertSchedule(schedule, in: db)
+    }
+}
+
+func insertSchedule(_ schedule: SQLiteMedicationSchedule, in db: Database) throws {
+    try SQLiteMedicationSchedule.insert {
+        (
+            $0.id,
+            $0.medicationID,
+            $0.label,
+            $0.amount,
+            $0.unit,
+            $0.cadence,
+            $0.interval,
+            $0.daysOfWeekMask,
+            $0.hour,
+            $0.minute,
+            $0.timeZoneIdentifier,
+            $0.startDate,
+            $0.isActive,
+            $0.sortOrder
+        )
+    } values: {
+        (
+            schedule.id,
+            schedule.medicationID,
+            schedule.label,
+            schedule.amount,
+            schedule.unit,
+            schedule.cadence,
+            schedule.interval,
+            schedule.daysOfWeekMask,
+            schedule.hour,
+            schedule.minute,
+            schedule.timeZoneIdentifier,
+            schedule.startDate,
+            schedule.isActive,
+            schedule.sortOrder
+        )
+    }
+    .execute(db)
+}
+
+func insertIntake(_ intake: SQLiteMedicationIntake, database: any DatabaseWriter) throws {
+    try database.write { db in
+        try insertIntake(intake, in: db)
+    }
+}
+
+func insertIntake(_ intake: SQLiteMedicationIntake, in db: Database) throws {
+    try SQLiteMedicationIntake.insert {
+        (
+            $0.id,
+            $0.medicationID,
+            $0.entryID,
+            $0.scheduleID,
+            $0.amount,
+            $0.unit,
+            $0.timestamp,
+            $0.scheduledDate,
+            $0.origin,
+            $0.notes
+        )
+    } values: {
+        (
+            intake.id,
+            intake.medicationID,
+            intake.entryID,
+            intake.scheduleID,
+            intake.amount,
+            intake.unit,
+            intake.timestamp,
+            intake.scheduledDate,
+            intake.origin,
+            intake.notes
+        )
+    }
+    .execute(db)
+}
+#endif

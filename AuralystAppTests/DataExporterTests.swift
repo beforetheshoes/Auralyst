@@ -4,7 +4,7 @@ import Dependencies
 @preconcurrency import SQLiteData
 @testable import AuralystApp
 
-@Suite("Data Exporter")
+@Suite("Data Exporter", .serialized)
 struct DataExporterSuite {
     @MainActor
     @Test("Summary counts match database state")

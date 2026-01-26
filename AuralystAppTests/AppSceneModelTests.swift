@@ -2,7 +2,7 @@ import Testing
 import Dependencies
 @testable import AuralystApp
 
-@Suite("App scene model share handling")
+@Suite("App scene model share handling", .serialized)
 struct AppSceneModelSuite {
     @MainActor
     @Test("Refresh journals separates primary and shared IDs")
