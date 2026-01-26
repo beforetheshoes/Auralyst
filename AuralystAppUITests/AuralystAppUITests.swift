@@ -8,6 +8,7 @@
 import XCTest
 
 final class AuralystAppUITests: XCTestCase {
+    @MainActor
     private func makeApp() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["AURALYST_UI_RESET"] = "1"

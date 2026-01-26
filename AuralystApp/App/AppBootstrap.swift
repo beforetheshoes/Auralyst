@@ -28,21 +28,10 @@ struct AppBootstrap {
         }
 
         guard !isRunningTests else { return }
-        Task { await startSyncEngine() }
     }
 }
 
 private extension AppBootstrap {
-    @MainActor
-    static func startSyncEngine() async {
-        @Dependency(\.syncEngine) var syncEngine
-        do {
-            try await syncEngine.start()
-        } catch {
-            // We deliberately ignore bootstrap sync failures so the app can continue launching.
-        }
-    }
-
     static func seedAutomationFixtures(using dependencies: inout DependencyValues) {
         guard let fixture = ProcessInfo.processInfo.environment["AURALYST_UI_FIXTURE"] else { return }
         switch fixture {
