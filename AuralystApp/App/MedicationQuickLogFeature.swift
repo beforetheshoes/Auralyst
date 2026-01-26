@@ -4,6 +4,8 @@ import Foundation
 
 @Reducer
 struct MedicationQuickLogFeature {
+    @Dependency(\.continuousClock) var clock
+
     @ObservableState
     struct State: Equatable {
         var journalID: UUID
@@ -21,6 +23,7 @@ struct MedicationQuickLogFeature {
     enum Action {
         case task
         case refresh
+        case refreshRequested
         case selectedDateChanged(Date)
         case loadResponse(TaskResult<MedicationQuickLogSnapshot>)
     }
@@ -44,6 +47,13 @@ struct MedicationQuickLogFeature {
                     )
                 }
 
+            case .refreshRequested:
+                return .run { [clock] send in
+                    try? await clock.sleep(for: .milliseconds(250))
+                    await send(.refresh)
+                }
+                .cancellable(id: RefreshDebounceID.refresh, cancelInFlight: true)
+
             case .selectedDateChanged(let date):
                 state.selectedDate = Calendar.current.startOfDay(for: date)
                 return .send(.refresh)
@@ -60,4 +70,8 @@ struct MedicationQuickLogFeature {
             }
         }
     }
+}
+
+private enum RefreshDebounceID: Hashable {
+    case refresh
 }

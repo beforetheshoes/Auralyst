@@ -1,6 +1,5 @@
 import SwiftUI
 @preconcurrency import SQLiteData
-import Dependencies
 import ComposableArchitecture
 
 struct JournalEntriesView: View {
@@ -8,6 +7,7 @@ struct JournalEntriesView: View {
     let onAddEntry: () -> Void
     let onShare: () -> Void
     let onExport: () -> Void
+    @StateObject private var quickLogStore: StoreOf<MedicationQuickLogFeature>
 
     // Fetch entries and models for this specific journal
     @FetchAll var entries: [SQLiteSymptomEntry]
@@ -47,6 +47,11 @@ struct JournalEntriesView: View {
         self.onAddEntry = onAddEntry
         self.onShare = onShare
         self.onExport = onExport
+        self._quickLogStore = StateObject(
+            wrappedValue: Store(initialState: MedicationQuickLogFeature.State(journalID: journal.id)) {
+                MedicationQuickLogFeature()
+            }
+        )
 
         // Filter entries and medications for this journal
         self._entries = FetchAll(SQLiteSymptomEntry.where { $0.journalID == journal.id })
@@ -66,9 +71,7 @@ struct JournalEntriesView: View {
         List {
             // Quick log meds from home
             MedicationQuickLogSection(
-                store: Store(initialState: MedicationQuickLogFeature.State(journalID: journal.id)) {
-                    MedicationQuickLogFeature()
-                },
+                store: quickLogStore,
                 manageAction: { activeSheet = .medicationManager },
                 loggingError: nil,
                 presentAsNeeded: { medication, date in
@@ -102,6 +105,12 @@ struct JournalEntriesView: View {
                     }
                 }
             }
+        }
+        .onChange(of: medications) { _, _ in
+            quickLogStore.send(.refreshRequested)
+        }
+        .onChange(of: medicationIntakes) { _, _ in
+            quickLogStore.send(.refreshRequested)
         }
         .navigationTitle("Journal")
         .toolbar {
@@ -314,34 +323,12 @@ private struct DayDetailView: View {
         .inlineNavigationTitleDisplay()
         .onAppear {
             currentIntakes = intakes
-            refreshIntakes()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .medicationIntakesDidChange)) { _ in
-            refreshIntakes()
-        }
-    }
-
-    private func refreshIntakes() {
-        @Dependency(\.defaultDatabase) var database
-        let bounds = dayBounds(for: date)
-        do {
-            let fetched = try database.read { db in
-                try SQLiteMedicationIntake
-                    .where { $0.timestamp >= bounds.start && $0.timestamp < bounds.end }
-                    .fetchAll(db)
-            }
-            currentIntakes = fetched
-        } catch {
-            currentIntakes = intakes
+        .onChange(of: intakes) { _, newValue in
+            currentIntakes = newValue
         }
     }
 
-    private func dayBounds(for date: Date) -> (start: Date, end: Date) {
-        let calendar = Calendar.current
-        let start = calendar.startOfDay(for: date)
-        let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start
-        return (start, end)
-    }
 }
 
 private struct SymptomEntryEditorView: View {

@@ -60,4 +60,43 @@ struct MedicationQuickLogFeatureTests {
         #expect(testStore.state.snapshot.medications.contains(where: { $0.name == "Vitamin D" }))
         #expect(testStore.state.snapshot.schedulesByMedication[medication.id]?.contains(where: { $0.id == schedule.id }) == true)
     }
+
+    @MainActor
+    @Test("Debounces refresh requests to a single load")
+    func debouncesRefreshRequests() async throws {
+        try prepareTestDependencies()
+
+        let store = DataStore()
+        let journal = store.createJournal()
+        _ = store.createMedication(
+            for: journal,
+            name: "Vitamin D",
+            defaultAmount: 1,
+            defaultUnit: "pill"
+        )
+
+        let testStore = TestStore(
+            initialState: MedicationQuickLogFeature.State(journalID: journal.id)
+        ) {
+            MedicationQuickLogFeature()
+        }
+
+        await testStore.send(.refreshRequested)
+        await testStore.send(.refreshRequested)
+
+        await testStore.receive(\.refresh) {
+            $0.isLoading = true
+            $0.errorMessage = nil
+        }
+
+        let loader = MedicationQuickLogLoader()
+        let expectedSnapshot = try loader.load(journalID: journal.id, on: testStore.state.selectedDate)
+
+        await testStore.receive(\.loadResponse) {
+            $0.isLoading = false
+            $0.snapshot = expectedSnapshot
+        }
+
+        await testStore.finish()
+    }
 }
