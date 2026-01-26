@@ -12,7 +12,7 @@ struct JournalEntriesView: View {
     // Fetch entries and models for this specific journal
     @FetchAll var entries: [SQLiteSymptomEntry]
     @FetchAll var medications: [SQLiteMedication]
-    @FetchAll(SQLiteMedicationIntake.all) var medicationIntakes
+    @FetchAll var medicationIntakes: [SQLiteMedicationIntake]
 
     struct AsNeededPresentation: Identifiable {
         let medication: SQLiteMedication
@@ -51,6 +51,15 @@ struct JournalEntriesView: View {
         // Filter entries and medications for this journal
         self._entries = FetchAll(SQLiteSymptomEntry.where { $0.journalID == journal.id })
         self._medications = FetchAll(SQLiteMedication.where { $0.journalID == journal.id })
+        self._medicationIntakes = FetchAll(
+            SQLiteMedicationIntake.where {
+                $0.medicationID.in(
+                    SQLiteMedication
+                        .select { $0.id }
+                        .where { $0.journalID == journal.id }
+                )
+            }
+        )
     }
 
     var body: some View {
@@ -144,13 +153,8 @@ struct JournalEntriesView: View {
         Dictionary(grouping: entries) { calendar.startOfDay(for: $0.timestamp) }
     }
 
-    private var relevantIntakes: [SQLiteMedicationIntake] {
-        let medIDs = Set(medications.map { $0.id })
-        return medicationIntakes.filter { medIDs.contains($0.medicationID) }
-    }
-
     private var intakesByDay: [Date: [SQLiteMedicationIntake]] {
-        Dictionary(grouping: relevantIntakes) { calendar.startOfDay(for: $0.timestamp) }
+        Dictionary(grouping: medicationIntakes) { calendar.startOfDay(for: $0.timestamp) }
     }
 
     private var dayKeys: [Date] {

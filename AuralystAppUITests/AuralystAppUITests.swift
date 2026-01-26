@@ -27,7 +27,6 @@ final class AuralystAppUITests: XCTestCase {
         // UI tests must launch the application that they test.
         let app = XCUIApplication()
         app.launch()
-        app.terminate()
 
         // Use XCTAssert and related functions to verify your tests produce the correct results.
     }
@@ -38,9 +37,7 @@ final class AuralystAppUITests: XCTestCase {
             throw XCTSkip("Performance launch test runs only on simulator.")
         }
         measure(metrics: [XCTApplicationLaunchMetric()]) {
-            let app = XCUIApplication()
-            app.launch()
-            app.terminate()
+            XCUIApplication().launch()
         }
     }
 }

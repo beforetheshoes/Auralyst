@@ -307,17 +307,27 @@ private extension DataExporter {
                 .order { $0.name.asc() }
                 .fetchAll(db)
 
-            let medicationIDs = Set(medications.map(\.id))
-
-            let allIntakes = try SQLiteMedicationIntake
+            let intakes = try SQLiteMedicationIntake
+                .where {
+                    $0.medicationID.in(
+                        SQLiteMedication
+                            .select { $0.id }
+                            .where { $0.journalID == journal.id }
+                    )
+                }
                 .order { $0.timestamp.desc() }
                 .fetchAll(db)
-            let intakes = allIntakes.filter { medicationIDs.contains($0.medicationID) }
 
-            let allSchedules = try SQLiteMedicationSchedule
+            let schedules = try SQLiteMedicationSchedule
+                .where {
+                    $0.medicationID.in(
+                        SQLiteMedication
+                            .select { $0.id }
+                            .where { $0.journalID == journal.id }
+                    )
+                }
                 .order { $0.sortOrder.asc() }
                 .fetchAll(db)
-            let schedules = allSchedules.filter { medicationIDs.contains($0.medicationID) }
 
             return Dataset(entries: entries, medications: medications, intakes: intakes, schedules: schedules)
         }
