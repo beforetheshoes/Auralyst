@@ -98,21 +98,8 @@ struct ContentView: View {
 }
 
 private extension ContentView {
-    enum OverlayState {
-        case syncing
-        case error(message: String)
-    }
-
-    func overlayState(viewStore: ViewStore<AppFeature.State, AppFeature.Action>) -> OverlayState? {
-        guard !viewStore.bypassInitialOverlay, viewStore.hasDeterminedInitialData == false else { return nil }
-        switch viewStore.syncStatus.status.phase {
-        case .syncing:
-            return .syncing
-        case .error(let issue):
-            return .error(message: issue.message)
-        default:
-            return .syncing
-        }
+    func overlayState(viewStore: ViewStore<AppFeature.State, AppFeature.Action>) -> InitialOverlayState? {
+        initialOverlayState(state: viewStore.state)
     }
 
     @ToolbarContentBuilder
@@ -159,7 +146,7 @@ private extension ContentView {
     }
 
     @ViewBuilder
-    func overlayView(for state: OverlayState, viewStore: ViewStore<AppFeature.State, AppFeature.Action>) -> some View {
+    func overlayView(for state: InitialOverlayState, viewStore: ViewStore<AppFeature.State, AppFeature.Action>) -> some View {
         switch state {
         case .syncing:
             ContentUnavailableView {
