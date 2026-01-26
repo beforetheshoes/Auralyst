@@ -118,6 +118,59 @@ struct SyncStatusFeatureTests {
     }
 
     @MainActor
+    @Test("Repeated activation while starting does not start sync twice")
+    func repeatedActivePhaseDoesNotStartTwice() async throws {
+        try prepareTestDependencies()
+
+        let startState = StartCallState()
+        let client = SyncEngineClient(
+            start: {
+                try await withCheckedThrowingContinuation { continuation in
+                    Task { await startState.capture(continuation) }
+                }
+            },
+            stop: {},
+            observeState: {
+                AsyncStream { continuation in
+                    continuation.finish()
+                }
+            }
+        )
+
+        let store = TestStore(
+            initialState: SyncStatusFeature.State(
+                shouldStartSync: true,
+                overridePhaseRaw: nil
+            )
+        ) {
+            SyncStatusFeature()
+        } withDependencies: {
+            $0.syncEngine = client
+        }
+
+        await store.send(.task) {
+            $0.isStarting = true
+            $0.status.phase = .syncing
+            $0.isObserving = true
+        }
+
+        await startState.waitForStartCall()
+
+        await store.send(.scenePhaseChanged(.active))
+
+        let startCount = await startState.getStartCount()
+        #expect(startCount == 1)
+
+        await startState.resumeStartSuccessfully()
+
+        await store.receive(\.startSyncResponse) {
+            $0.isStarting = false
+        }
+
+        await store.finish()
+    }
+
+    @MainActor
     @Test("Background scene phase does not stop the sync engine")
     func backgroundScenePhaseDoesNotStopSyncEngine() async throws {
         try prepareTestDependencies()
@@ -158,6 +211,7 @@ private actor StartCallState {
     private var waiters: [CheckedContinuation<Void, Never>] = []
     private var stopWaiters: [(expected: Int, continuation: CheckedContinuation<Void, Never>)] = []
     private(set) var stopCount = 0
+    private var startCount = 0
     private let thrownError: Error?
 
     init(throws error: Error? = nil) {
@@ -165,6 +219,7 @@ private actor StartCallState {
     }
 
     func capture(_ continuation: CheckedContinuation<Void, Error>) {
+        startCount += 1
         if let thrownError {
             continuation.resume(throwing: thrownError)
             notifyWaiters()
@@ -172,6 +227,10 @@ private actor StartCallState {
         }
         self.continuation = continuation
         notifyWaiters()
+    }
+
+    func getStartCount() -> Int {
+        startCount
     }
 
     func waitForStartCall() async {
