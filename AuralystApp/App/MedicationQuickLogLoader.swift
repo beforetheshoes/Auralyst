@@ -15,7 +15,6 @@ struct MedicationQuickLogSnapshot: Equatable {
     )
 }
 
-@MainActor
 struct MedicationQuickLogLoader {
     @Dependency(\.defaultDatabase) private var database
     @Dependency(\.databaseClient) private var databaseClient

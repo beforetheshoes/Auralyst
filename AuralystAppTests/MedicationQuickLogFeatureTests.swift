@@ -49,10 +49,8 @@ struct MedicationQuickLogFeatureTests {
             $0.errorMessage = nil
         }
 
-        let expectedSnapshot = try await MainActor.run {
-            let loader = MedicationQuickLogLoader()
-            return try loader.load(journalID: journal.id, on: testStore.state.selectedDate)
-        }
+        let loader = MedicationQuickLogLoader()
+        let expectedSnapshot = try loader.load(journalID: journal.id, on: testStore.state.selectedDate)
 
         await testStore.receive(\.loadResponse) {
             $0.isLoading = false
