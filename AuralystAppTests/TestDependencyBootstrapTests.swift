@@ -1,4 +1,5 @@
 import Dependencies
+import GRDB
 @preconcurrency import SQLiteData
 import XCTest
 @testable import AuralystApp
@@ -44,10 +45,7 @@ final class TestDependencyBootstrapTests: XCTestCase {
         @Dependency(\.defaultDatabase) var database
 
         let registeredTables = try database.read { db in
-            try String.fetchAll(
-                db,
-                sql: "SELECT \"tableName\" FROM \"sqlitedata_icloud_recordTypes\""
-            )
+            try SQLiteDataRecordTypeRow.fetchAll(db).map(\.tableName)
         }
 
         let expectedTables: Set<String> = [
@@ -60,6 +58,16 @@ final class TestDependencyBootstrapTests: XCTestCase {
         ]
 
         XCTAssertEqual(Set(registeredTables), expectedTables)
+    }
+}
+
+private struct SQLiteDataRecordTypeRow: FetchableRecord, TableRecord {
+    static let databaseTableName = "sqlitedata_icloud_recordTypes"
+
+    let tableName: String
+
+    init(row: Row) {
+        tableName = row["tableName"]
     }
 }
 

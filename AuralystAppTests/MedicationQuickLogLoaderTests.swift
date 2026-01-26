@@ -4,7 +4,7 @@ import Dependencies
 @preconcurrency import SQLiteData
 @testable import AuralystApp
 
-@Suite("Medication quick log loader")
+@Suite("Medication quick log loader", .serialized)
 struct MedicationQuickLogLoaderSuite {
     @MainActor
     @Test("Loads schedules for medications on refresh")

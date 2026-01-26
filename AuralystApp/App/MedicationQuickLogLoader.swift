@@ -40,43 +40,12 @@ struct MedicationQuickLogLoader {
         var mapping: [UUID: [SQLiteMedicationSchedule]] = [:]
         try database.read { db in
             for medication in medications {
-                let rows = try Row.fetchAll(
-                    db,
-                    sql: """
-                        SELECT *
-                        FROM sqLiteMedicationSchedule
-                        WHERE medicationID = ?
-                        ORDER BY sortOrder ASC, hour ASC, minute ASC
-                        """,
-                    arguments: [medication.id.uuidString]
-                )
-                let schedules = rows.map { row -> SQLiteMedicationSchedule in
-                    let interval: Int16 = (row["interval"] as Int64?).map { Int16($0) } ?? 1
-                    let daysOfWeekMask: Int16 = (row["daysOfWeekMask"] as Int64?).map { Int16($0) } ?? 0
-                    let hour: Int16? = (row["hour"] as Int64?).map { Int16($0) }
-                    let minute: Int16? = (row["minute"] as Int64?).map { Int16($0) }
-                    let sortOrder: Int16 = (row["sortOrder"] as Int64?).map { Int16($0) } ?? 0
-                    let idString: String = row["id"]
-                    let medicationIDString: String = row["medicationID"]
-                    let id = UUID(uuidString: idString) ?? UUID()
-                    let medicationID = UUID(uuidString: medicationIDString) ?? medication.id
-                    return SQLiteMedicationSchedule(
-                        id: id,
-                        medicationID: medicationID,
-                        label: row["label"],
-                        amount: row["amount"],
-                        unit: row["unit"],
-                        cadence: row["cadence"],
-                        interval: interval,
-                        daysOfWeekMask: daysOfWeekMask,
-                        hour: hour,
-                        minute: minute,
-                        timeZoneIdentifier: row["timeZoneIdentifier"],
-                        startDate: row["startDate"],
-                        isActive: (row["isActive"] as Bool?) ?? (row["isActive"] as Int64?).map { $0 != 0 },
-                        sortOrder: sortOrder
-                    )
-                }
+                let schedules = try SQLiteMedicationSchedule
+                    .where { $0.medicationID == medication.id }
+                    .order { $0.sortOrder.asc() }
+                    .order { $0.hour.asc() }
+                    .order { $0.minute.asc() }
+                    .fetchAll(db)
                 if !schedules.isEmpty {
                     mapping[medication.id] = schedules
                 }

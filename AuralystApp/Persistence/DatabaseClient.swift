@@ -142,14 +142,14 @@ private enum DatabaseClientKey: DependencyKey {
             deleteMedication: { medicationID in
                 do {
                     try database.write { db in
-                        try db.execute(
-                            sql: "DELETE FROM sqLiteMedicationSchedule WHERE medicationID = ?",
-                            arguments: [medicationID.uuidString]
-                        )
-                        try db.execute(
-                            sql: "DELETE FROM sqLiteMedicationIntake WHERE medicationID = ?",
-                            arguments: [medicationID.uuidString]
-                        )
+                        try SQLiteMedicationSchedule
+                            .where { $0.medicationID == medicationID }
+                            .delete()
+                            .execute(db)
+                        try SQLiteMedicationIntake
+                            .where { $0.medicationID == medicationID }
+                            .delete()
+                            .execute(db)
                         try SQLiteMedication.find(medicationID).delete().execute(db)
                     }
                     logger.info("Deleted medication: \(medicationID)")
@@ -261,9 +261,7 @@ private enum DatabaseClientKey: DependencyKey {
 
         client.fetchMedicationIntake = { id in
             do {
-                let intake = try database.read { db in
-                    try fetchMedicationIntakeRow(db: db, id: id)
-                }
+                let intake = try database.read { db in try SQLiteMedicationIntake.find(id).fetchOne(db) }
                 logger.info("Fetched medication intake (test): \(id)")
                 return intake
             } catch {
@@ -275,35 +273,19 @@ private enum DatabaseClientKey: DependencyKey {
         client.updateMedicationIntake = { intake in
             do {
                 try database.write { db in
-                    let existing = try fetchMedicationIntakeRow(db: db, id: intake.id)
-                    let recordToPersist = existing?.mergingEditableFields(
-                        amount: intake.amount,
-                        unit: intake.unit,
-                        timestamp: intake.timestamp,
-                        notes: intake.notes
-                    ) ?? intake
+                    let recordToPersist: SQLiteMedicationIntake
+                    if let existing = try SQLiteMedicationIntake.find(intake.id).fetchOne(db) {
+                        recordToPersist = existing.mergingEditableFields(
+                            amount: intake.amount,
+                            unit: intake.unit,
+                            timestamp: intake.timestamp,
+                            notes: intake.notes
+                        )
+                    } else {
+                        recordToPersist = intake
+                    }
 
-                    try db.execute(
-                        sql: """
-                        INSERT OR REPLACE INTO "sqLiteMedicationIntake"
-                        ("id", "medicationID", "entryID", "scheduleID", "amount", "unit",
-                         "timestamp", "scheduledDate", "origin", "notes")
-                        VALUES (:id, :medicationID, :entryID, :scheduleID, :amount, :unit,
-                                :timestamp, :scheduledDate, :origin, :notes)
-                        """,
-                        arguments: [
-                            "id": recordToPersist.id.uuidString,
-                            "medicationID": recordToPersist.medicationID.uuidString,
-                            "entryID": recordToPersist.entryID?.uuidString,
-                            "scheduleID": recordToPersist.scheduleID?.uuidString,
-                            "amount": recordToPersist.amount,
-                            "unit": recordToPersist.unit,
-                            "timestamp": recordToPersist.timestamp,
-                            "scheduledDate": recordToPersist.scheduledDate,
-                            "origin": recordToPersist.origin,
-                            "notes": recordToPersist.notes
-                        ]
-                    )
+                    try SQLiteMedicationIntake.update(recordToPersist).execute(db)
                 }
                 logger.info("Updated medication intake (test): \(intake.id)")
             } catch {
@@ -322,48 +304,4 @@ extension DependencyValues {
         get { self[DatabaseClientKey.self] }
         set { self[DatabaseClientKey.self] = newValue }
     }
-}
-
-private func fetchMedicationIntakeRow(db: Database, id: UUID) throws -> SQLiteMedicationIntake? {
-    guard let row = try Row.fetchOne(
-        db,
-        sql: """
-            SELECT id, medicationID, entryID, scheduleID, amount, unit, timestamp,
-                   scheduledDate, origin, notes
-            FROM sqLiteMedicationIntake
-            WHERE id = ?
-        """,
-        arguments: [id.uuidString]
-    ) else {
-        return nil
-    }
-
-    let idString: String = row["id"]
-    let medicationIDString: String = row["medicationID"]
-    let entryIDString: String? = row["entryID"]
-    let scheduleIDString: String? = row["scheduleID"]
-
-    guard let parsedID = UUID(uuidString: idString),
-          let parsedMedicationID = UUID(uuidString: medicationIDString) else {
-        return nil
-    }
-
-    let entryID = entryIDString.flatMap(UUID.init(uuidString:))
-    let scheduleID = scheduleIDString.flatMap(UUID.init(uuidString:))
-
-    let timestamp: Date = row["timestamp"]
-    let scheduledDate: Date? = row["scheduledDate"]
-
-    return SQLiteMedicationIntake(
-        id: parsedID,
-        medicationID: parsedMedicationID,
-        entryID: entryID,
-        scheduleID: scheduleID,
-        amount: row["amount"],
-        unit: row["unit"],
-        timestamp: timestamp,
-        scheduledDate: scheduledDate,
-        origin: row["origin"],
-        notes: row["notes"]
-    )
 }

@@ -262,9 +262,15 @@ struct MedicationEditorFeature {
                         .deleteResponse(
                             TaskResult {
                                 try database.write { db in
-                                    try db.execute(sql: "DELETE FROM sqLiteMedicationSchedule WHERE medicationID = ?", arguments: [medicationID])
-                                    try db.execute(sql: "DELETE FROM sqLiteMedicationIntake WHERE medicationID = ?", arguments: [medicationID])
-                                    try db.execute(sql: "DELETE FROM sqLiteMedication WHERE id = ?", arguments: [medicationID])
+                                    try SQLiteMedicationSchedule
+                                        .where { $0.medicationID == medicationID }
+                                        .delete()
+                                        .execute(db)
+                                    try SQLiteMedicationIntake
+                                        .where { $0.medicationID == medicationID }
+                                        .delete()
+                                        .execute(db)
+                                    try SQLiteMedication.find(medicationID).delete().execute(db)
                                 }
                                 NotificationCenter.default.post(name: .medicationsDidChange, object: nil)
                             }
@@ -313,31 +319,62 @@ private func upsertMedication(
     timestamp: Date
 ) throws -> UUID {
     if let medID = medicationID {
-        try db.execute(sql: """
-            UPDATE sqLiteMedication
-            SET name = ?,
-                defaultAmount = ?,
-                defaultUnit = ?,
-                isAsNeeded = ?,
-                useCase = ?,
-                notes = ?,
-                updatedAt = ?
-            WHERE id = ?
-        """, arguments: [name, amount, unit, isAsNeeded, useCase, notes, timestamp, medID])
+        if let existing = try SQLiteMedication.find(medID).fetchOne(db) {
+            let updated = SQLiteMedication(
+                id: medID,
+                journalID: existing.journalID,
+                name: name,
+                defaultAmount: amount,
+                defaultUnit: unit,
+                isAsNeeded: isAsNeeded,
+                useCase: useCase,
+                notes: notes,
+                createdAt: existing.createdAt,
+                updatedAt: timestamp
+            )
+            try SQLiteMedication.update(updated).execute(db)
+            return medID
+        }
+
+        let newMedication = SQLiteMedication(
+            id: medID,
+            journalID: journalID,
+            name: name,
+            defaultAmount: amount,
+            defaultUnit: unit,
+            isAsNeeded: isAsNeeded,
+            useCase: useCase,
+            notes: notes,
+            createdAt: timestamp,
+            updatedAt: timestamp
+        )
+        try SQLiteMedication.insert { newMedication }.execute(db)
         return medID
     } else {
         let medID = UUID()
-        try db.execute(sql: """
-            INSERT INTO sqLiteMedication
-                (id, journalID, name, defaultAmount, defaultUnit, isAsNeeded, useCase, notes, createdAt, updatedAt)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, arguments: [medID, journalID, name, amount, unit, isAsNeeded, useCase, notes, timestamp, timestamp])
+        let medication = SQLiteMedication(
+            id: medID,
+            journalID: journalID,
+            name: name,
+            defaultAmount: amount,
+            defaultUnit: unit,
+            isAsNeeded: isAsNeeded,
+            useCase: useCase,
+            notes: notes,
+            createdAt: timestamp,
+            updatedAt: timestamp
+        )
+        try SQLiteMedication.insert { medication }.execute(db)
         return medID
     }
 }
 
 private func syncSchedules(in db: Database, medicationID: UUID, drafts: inout [MedicationEditorFeature.ScheduleDraft]) throws {
-    let existingIDs = Set(try UUID.fetchAll(db, sql: "SELECT id FROM sqLiteMedicationSchedule WHERE medicationID = ?", arguments: [medicationID]))
+    let existingSchedules = try SQLiteMedicationSchedule
+        .where { $0.medicationID == medicationID }
+        .fetchAll(db)
+    let existingIDs = Set(existingSchedules.map(\.id))
+    let existingByID = Dictionary(uniqueKeysWithValues: existingSchedules.map { ($0.id, $0) })
     var retainedIDs = Set<UUID>()
 
     for index in drafts.indices {
@@ -351,23 +388,44 @@ private func syncSchedules(in db: Database, medicationID: UUID, drafts: inout [M
         let hour = Int16(Calendar.current.component(.hour, from: draft.time))
         let minute = Int16(Calendar.current.component(.minute, from: draft.time))
 
-        try db.execute(sql: """
-            INSERT INTO sqLiteMedicationSchedule
-                (id, medicationID, label, amount, unit, hour, minute, sortOrder)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                label = excluded.label,
-                amount = excluded.amount,
-                unit = excluded.unit,
-                hour = excluded.hour,
-                minute = excluded.minute,
-                sortOrder = excluded.sortOrder
-        """, arguments: [scheduleID, medicationID, draft.label, amount, unit, hour, minute, Int16(index)])
+        let sortOrder = Int16(index)
+        if let existing = existingByID[scheduleID] {
+            let updated = SQLiteMedicationSchedule(
+                id: scheduleID,
+                medicationID: medicationID,
+                label: draft.label,
+                amount: amount,
+                unit: unit,
+                cadence: existing.cadence,
+                interval: existing.interval,
+                daysOfWeekMask: existing.daysOfWeekMask,
+                hour: hour,
+                minute: minute,
+                timeZoneIdentifier: existing.timeZoneIdentifier,
+                startDate: existing.startDate,
+                isActive: existing.isActive,
+                sortOrder: sortOrder
+            )
+            try SQLiteMedicationSchedule.update(updated).execute(db)
+        } else {
+            let schedule = SQLiteMedicationSchedule(
+                id: scheduleID,
+                medicationID: medicationID,
+                label: draft.label,
+                amount: amount,
+                unit: unit,
+                hour: hour,
+                minute: minute,
+                sortOrder: sortOrder
+            )
+            try SQLiteMedicationSchedule.insert { schedule }.execute(db)
+        }
     }
 
     let idsToDelete = existingIDs.subtracting(retainedIDs)
     if !idsToDelete.isEmpty {
-        let placeholders = idsToDelete.map { _ in "?" }.joined(separator: ",")
-        try db.execute(sql: "DELETE FROM sqLiteMedicationSchedule WHERE id IN (\(placeholders))", arguments: StatementArguments(Array(idsToDelete)))
+        for id in idsToDelete {
+            try SQLiteMedicationSchedule.find(id).delete().execute(db)
+        }
     }
 }
