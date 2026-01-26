@@ -273,19 +273,17 @@ private enum DatabaseClientKey: DependencyKey {
         client.updateMedicationIntake = { intake in
             do {
                 try database.write { db in
-                    let recordToPersist: SQLiteMedicationIntake
                     if let existing = try SQLiteMedicationIntake.find(intake.id).fetchOne(db) {
-                        recordToPersist = existing.mergingEditableFields(
+                        let recordToPersist = existing.mergingEditableFields(
                             amount: intake.amount,
                             unit: intake.unit,
                             timestamp: intake.timestamp,
                             notes: intake.notes
                         )
+                        try SQLiteMedicationIntake.update(recordToPersist).execute(db)
                     } else {
-                        recordToPersist = intake
+                        try SQLiteMedicationIntake.insert { intake }.execute(db)
                     }
-
-                    try SQLiteMedicationIntake.update(recordToPersist).execute(db)
                 }
                 logger.info("Updated medication intake (test): \(intake.id)")
             } catch {
