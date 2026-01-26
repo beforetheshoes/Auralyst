@@ -7,6 +7,7 @@ struct DataExportSummary {
     let exportedMedications: Int
     let exportedSchedules: Int
     let exportedIntakes: Int
+    let exportedCollaboratorNotes: Int
 }
 
 struct DataExporter {
@@ -22,6 +23,7 @@ struct DataExporter {
         lines.append("exportedMedications,\(summary.exportedMedications)")
         lines.append("exportedSchedules,\(summary.exportedSchedules)")
         lines.append("exportedIntakes,\(summary.exportedIntakes)")
+        lines.append("exportedCollaboratorNotes,\(summary.exportedCollaboratorNotes)")
 
         lines.append("")
         lines.append("symptom_entries")
@@ -39,6 +41,20 @@ struct DataExporter {
             values.append(csvEscape(entry.note))
             values.append(csvEscape(entry.sentimentLabel))
             values.append(entry.sentimentScore.map { String($0) } ?? "")
+            lines.append(values.joined(separator: ","))
+        }
+
+        lines.append("")
+        lines.append("collaborator_notes")
+        lines.append("id,journal_id,entry_id,author_name,text,timestamp")
+        for note in dataset.collaboratorNotes {
+            var values: [String] = []
+            values.append(note.id.uuidString)
+            values.append(note.journalID.uuidString)
+            values.append(note.entryID?.uuidString ?? "")
+            values.append(csvEscape(note.authorName))
+            values.append(csvEscape(note.text))
+            values.append(isoFormat.format(note.timestamp))
             lines.append(values.joined(separator: ","))
         }
 
@@ -127,6 +143,7 @@ struct DataExporter {
 private extension DataExporter {
     struct Dataset {
         let entries: [SQLiteSymptomEntry]
+        let collaboratorNotes: [SQLiteCollaboratorNote]
         let medications: [SQLiteMedication]
         let intakes: [SQLiteMedicationIntake]
         let schedules: [SQLiteMedicationSchedule]
@@ -136,7 +153,8 @@ private extension DataExporter {
                 exportedEntries: entries.count,
                 exportedMedications: medications.count,
                 exportedSchedules: schedules.count,
-                exportedIntakes: intakes.count
+                exportedIntakes: intakes.count,
+                exportedCollaboratorNotes: collaboratorNotes.count
             )
         }
     }
@@ -152,6 +170,7 @@ private extension DataExporter {
             let exportedMedications: Int
             let exportedSchedules: Int
             let exportedIntakes: Int
+            let exportedCollaboratorNotes: Int
         }
 
         struct SymptomEntry: Encodable {
@@ -166,6 +185,15 @@ private extension DataExporter {
             let note: String?
             let sentimentLabel: String?
             let sentimentScore: Double?
+        }
+
+        struct CollaboratorNote: Encodable {
+            let id: UUID
+            let journalID: UUID
+            let entryID: UUID?
+            let authorName: String?
+            let text: String?
+            let timestamp: Date
         }
 
         struct Medication: Encodable {
@@ -214,6 +242,7 @@ private extension DataExporter {
         let journal: Journal
         let summary: Summary
         let entries: [SymptomEntry]
+        let collaboratorNotes: [CollaboratorNote]
         let medications: [Medication]
         let intakes: [Intake]
         let schedules: [Schedule]
@@ -224,7 +253,8 @@ private extension DataExporter {
                 exportedEntries: dataset.summary.exportedEntries,
                 exportedMedications: dataset.summary.exportedMedications,
                 exportedSchedules: dataset.summary.exportedSchedules,
-                exportedIntakes: dataset.summary.exportedIntakes
+                exportedIntakes: dataset.summary.exportedIntakes,
+                exportedCollaboratorNotes: dataset.summary.exportedCollaboratorNotes
             )
 
             self.entries = dataset.entries.map { entry in
@@ -240,6 +270,17 @@ private extension DataExporter {
                     note: entry.note,
                     sentimentLabel: entry.sentimentLabel,
                     sentimentScore: entry.sentimentScore
+                )
+            }
+
+            self.collaboratorNotes = dataset.collaboratorNotes.map { note in
+                CollaboratorNote(
+                    id: note.id,
+                    journalID: note.journalID,
+                    entryID: note.entryID,
+                    authorName: note.authorName,
+                    text: note.text,
+                    timestamp: note.timestamp
                 )
             }
 
@@ -302,6 +343,11 @@ private extension DataExporter {
                 .order { $0.timestamp.desc() }
                 .fetchAll(db)
 
+            let collaboratorNotes = try SQLiteCollaboratorNote
+                .where { $0.journalID == journal.id }
+                .order { $0.timestamp.desc() }
+                .fetchAll(db)
+
             let medications = try SQLiteMedication
                 .where { $0.journalID == journal.id }
                 .order { $0.name.asc() }
@@ -329,7 +375,13 @@ private extension DataExporter {
                 .order { $0.sortOrder.asc() }
                 .fetchAll(db)
 
-            return Dataset(entries: entries, medications: medications, intakes: intakes, schedules: schedules)
+            return Dataset(
+                entries: entries,
+                collaboratorNotes: collaboratorNotes,
+                medications: medications,
+                intakes: intakes,
+                schedules: schedules
+            )
         }
     }
 
