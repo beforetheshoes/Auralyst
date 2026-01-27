@@ -7,6 +7,7 @@ struct JournalEntriesView: View {
     let onAddEntry: () -> Void
     let onShare: () -> Void
     let onExport: () -> Void
+    let onImport: () -> Void
     @StateObject private var quickLogStore: StoreOf<MedicationQuickLogFeature>
 
     // Fetch entries and models for this specific journal
@@ -41,12 +42,14 @@ struct JournalEntriesView: View {
         journal: SQLiteJournal,
         onAddEntry: @escaping () -> Void,
         onShare: @escaping () -> Void,
-        onExport: @escaping () -> Void
+        onExport: @escaping () -> Void,
+        onImport: @escaping () -> Void
     ) {
         self.journal = journal
         self.onAddEntry = onAddEntry
         self.onShare = onShare
         self.onExport = onExport
+        self.onImport = onImport
         self._quickLogStore = StateObject(
             wrappedValue: Store(initialState: MedicationQuickLogFeature.State(journalID: journal.id)) {
                 MedicationQuickLogFeature()
@@ -119,6 +122,7 @@ struct JournalEntriesView: View {
                 Menu {
                     Button("Share Journal", action: onShare)
                     Button("Export Data", action: onExport)
+                    Button("Import Data", action: onImport)
                 } label: {
                     Label("Options", systemImage: "ellipsis.circle")
                 }
@@ -442,7 +446,8 @@ private struct SymptomEntryEditorView: View {
             journal: SQLiteJournal(),
             onAddEntry: {},
             onShare: {},
-            onExport: {}
+            onExport: {},
+            onImport: {}
         )
     }
 }
