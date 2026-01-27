@@ -17,14 +17,14 @@ struct MedicationQuickLogSnapshot: Equatable {
 
 struct MedicationQuickLogLoader {
     @Dependency(\.defaultDatabase) private var database
-    @Dependency(\.databaseClient) private var databaseClient
 
     func load(journalID: UUID, on date: Date) throws -> MedicationQuickLogSnapshot {
-        guard let journal = databaseClient.fetchJournal(journalID) else {
-            return .empty
+        let medications = try database.read { db in
+            try SQLiteMedication
+                .where { $0.journalID == journalID }
+                .order { $0.name.asc() }
+                .fetchAll(db)
         }
-
-        let medications = databaseClient.fetchMedications(journal)
         let schedulesByMedication = try loadSchedules(for: medications)
         let takenByScheduleID = try loadIntakes(for: medications, on: date)
 

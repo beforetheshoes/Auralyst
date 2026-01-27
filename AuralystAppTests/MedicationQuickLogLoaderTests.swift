@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import Dependencies
+import GRDB
 @preconcurrency import SQLiteData
 @testable import AuralystApp
 
@@ -62,5 +63,38 @@ struct MedicationQuickLogLoaderSuite {
         }.value
 
         #expect(result.0.medications.contains(where: { $0.id == result.1 }))
+    }
+
+    @MainActor
+    @Test("Loads medications even if the journal row is missing")
+    func loaderDoesNotRequireJournalRow() throws {
+        try prepareTestDependencies()
+
+        @Dependency(\.defaultDatabase) var database
+        let store = DataStore()
+
+        let journal = store.createJournal()
+        let medication = store.createMedication(
+            for: journal,
+            name: "Orphan Med",
+            defaultAmount: 1,
+            defaultUnit: "pill"
+        )
+        let now = Date()
+
+        try database.write { db in
+            // Simulate a reset that removes the journal but leaves medications behind.
+            try db.execute(sql: "PRAGMA foreign_keys = OFF")
+            try db.execute(
+                sql: "DELETE FROM sqLiteJournal WHERE id = ?",
+                arguments: [journal.id.uuidString]
+            )
+            try db.execute(sql: "PRAGMA foreign_keys = ON")
+        }
+
+        let loader = MedicationQuickLogLoader()
+        let snapshot = try loader.load(journalID: journal.id, on: now)
+
+        #expect(snapshot.medications.contains(where: { $0.id == medication.id }))
     }
 }

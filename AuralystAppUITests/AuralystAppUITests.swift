@@ -9,9 +9,12 @@ import XCTest
 
 final class AuralystAppUITests: XCTestCase {
     @MainActor
-    private func makeApp() -> XCUIApplication {
+    private func makeApp(fixture: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["AURALYST_UI_RESET"] = "1"
+        if let fixture {
+            app.launchEnvironment["AURALYST_UI_FIXTURE"] = fixture
+        }
         return app
     }
 
@@ -35,6 +38,21 @@ final class AuralystAppUITests: XCTestCase {
         app.launch()
 
         // Use XCTAssert and related functions to verify your tests produce the correct results.
+    }
+
+    @MainActor
+    func testQuickLogShowsOnInitialLaunch() throws {
+        let app = makeApp(fixture: "quicklog_initial")
+        app.launch()
+
+        XCTAssertTrue(
+            app.staticTexts["Fixture Daily"].waitForExistence(timeout: 5),
+            "Expected scheduled medication to appear on initial launch."
+        )
+        XCTAssertTrue(
+            app.buttons["Fixture Relief"].waitForExistence(timeout: 5),
+            "Expected as-needed medication to appear on initial launch."
+        )
     }
 
     @MainActor

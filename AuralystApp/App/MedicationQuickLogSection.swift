@@ -95,7 +95,6 @@ struct MedicationQuickLogSection: View {
                         .font(.caption)
                 }
             }
-            .task { viewStore.send(.task) }
         }
     }
 
@@ -376,7 +375,6 @@ struct AsNeededIntakeView: View {
                     viewStore.send(.clearDidSave)
                     dismiss()
                 }
-                .task { viewStore.send(.task) }
             }
         }
     }

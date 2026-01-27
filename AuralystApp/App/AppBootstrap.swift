@@ -37,6 +37,8 @@ private extension AppBootstrap {
         switch fixture {
         case "as_needed_quicklog":
             seedAsNeededFixture(using: &dependencies)
+        case "quicklog_initial":
+            seedQuickLogInitialFixture(using: &dependencies)
         default:
             break
         }
@@ -89,6 +91,117 @@ private extension AppBootstrap {
                         useCase: index == 0 ? "Pain" : "Sleep"
                     )
                     try SQLiteMedication.insert { medication }.execute(db)
+                }
+            }
+        } catch {
+            // Only used for automation fixtures; ignore failures in production builds.
+        }
+    }
+
+    static func seedQuickLogInitialFixture(using dependencies: inout DependencyValues) {
+        do {
+            let database = dependencies.defaultDatabase
+            try database.write { db in
+                let journal: SQLiteJournal
+                if let existing = try SQLiteJournal.all.fetchAll(db).first {
+                    journal = existing
+                } else {
+                    let newJournal = SQLiteJournal()
+                    try SQLiteJournal.insert { newJournal }.execute(db)
+                    journal = newJournal
+                }
+
+                let medications = try SQLiteMedication
+                    .where { $0.journalID == journal.id }
+                    .fetchAll(db)
+                let existingNames = Set(medications.map(\.name))
+
+                let scheduledName = "Fixture Daily"
+                let asNeededName = "Fixture Relief"
+
+                var scheduledMedication: SQLiteMedication?
+                if !existingNames.contains(scheduledName) {
+                    let medication = SQLiteMedication(
+                        journalID: journal.id,
+                        name: scheduledName,
+                        defaultAmount: 1,
+                        defaultUnit: "pill",
+                        isAsNeeded: false
+                    )
+                    try SQLiteMedication.insert { medication }.execute(db)
+                    scheduledMedication = medication
+                } else {
+                    scheduledMedication = medications.first(where: { $0.name == scheduledName })
+                }
+
+                if !existingNames.contains(asNeededName) {
+                    let medication = SQLiteMedication(
+                        journalID: journal.id,
+                        name: asNeededName,
+                        defaultAmount: 2,
+                        defaultUnit: "pill",
+                        isAsNeeded: true,
+                        useCase: "Pain"
+                    )
+                    try SQLiteMedication.insert { medication }.execute(db)
+                }
+
+                if let scheduledMedication {
+                    let existingSchedules = try SQLiteMedicationSchedule
+                        .where { $0.medicationID == scheduledMedication.id }
+                        .fetchAll(db)
+                    if existingSchedules.isEmpty {
+                        let schedule = SQLiteMedicationSchedule(
+                            medicationID: scheduledMedication.id,
+                            label: "Morning",
+                            amount: 1,
+                            unit: "pill",
+                            cadence: "daily",
+                            interval: 1,
+                            daysOfWeekMask: MedicationWeekday.mask(for: MedicationWeekday.allCases),
+                            hour: 8,
+                            minute: 0,
+                            timeZoneIdentifier: TimeZone.current.identifier,
+                            isActive: true,
+                            sortOrder: 0
+                        )
+                        try SQLiteMedicationSchedule.insert {
+                            (
+                                $0.id,
+                                $0.medicationID,
+                                $0.label,
+                                $0.amount,
+                                $0.unit,
+                                $0.cadence,
+                                $0.interval,
+                                $0.daysOfWeekMask,
+                                $0.hour,
+                                $0.minute,
+                                $0.timeZoneIdentifier,
+                                $0.startDate,
+                                $0.isActive,
+                                $0.sortOrder
+                            )
+                        } values: {
+                            (
+                                schedule.id,
+                                schedule.medicationID,
+                                schedule.label,
+                                schedule.amount,
+                                schedule.unit,
+                                schedule.cadence,
+                                schedule.interval,
+                                schedule.daysOfWeekMask,
+                                schedule.hour,
+                                schedule.minute,
+                                schedule.timeZoneIdentifier,
+                                schedule.startDate,
+                                schedule.isActive,
+                                schedule.sortOrder
+                            )
+                        }
+                        .execute(db)
+                    }
                 }
             }
         } catch {
