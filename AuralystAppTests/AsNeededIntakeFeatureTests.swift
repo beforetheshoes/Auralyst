@@ -18,7 +18,7 @@ struct AsNeededIntakeFeatureSuite {
             isAsNeeded: true
         )
         let calendar = Calendar.current
-        let now = Date()
+        let now = Date(timeIntervalSince1970: 1_726_700_000)
         let dayStart = calendar.startOfDay(for: baseDate)
         let nowComponents = calendar.dateComponents([.hour, .minute], from: now)
         var dateComponents = calendar.dateComponents([.year, .month, .day], from: dayStart)
@@ -33,6 +33,8 @@ struct AsNeededIntakeFeatureSuite {
             )
         ) {
             AsNeededIntakeFeature()
+        } withDependencies: {
+            $0.date.now = now
         }
 
         await store.send(.task) {
