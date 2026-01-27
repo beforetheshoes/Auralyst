@@ -37,7 +37,7 @@ struct ExportView: View {
                     .buttonStyle(.bordered)
 
                     if viewStore.isGenerating {
-                        ProgressView("Preparing export…")
+                        ProgressView(viewStore.isAutoFixing ? "Fixing data issues…" : "Preparing export…")
                             .progressViewStyle(.circular)
                     }
 
@@ -71,6 +71,23 @@ struct ExportView: View {
                     }
                 }
 #endif
+                .confirmationDialog(
+                    "Data Health Issues Found",
+                    isPresented: viewStore.binding(
+                        get: \.isShowingPreflightDialog,
+                        send: { _ in .preflightCancelTapped }
+                    ),
+                    presenting: viewStore.preflightReport
+                ) { _ in
+                    Button("Fix Automatically and Export") {
+                        viewStore.send(.preflightAutoFixTapped)
+                    }
+                    Button("Cancel", role: .cancel) {
+                        viewStore.send(.preflightCancelTapped)
+                    }
+                } message: { report in
+                    Text(preflightMessage(report))
+                }
                 .alert(
                     "Export Saved",
                     isPresented: viewStore.binding(
@@ -85,6 +102,22 @@ struct ExportView: View {
                 }
             }
         }
+    }
+}
+
+private extension ExportView {
+    func preflightMessage(_ report: ExportPreflightReport) -> String {
+        let lines = report.issues.map { issue in
+            switch issue.kind {
+            case .missingScheduleReferences:
+                return "\(issue.count) intakes reference missing schedules."
+            case .missingIntakeEntryReferences:
+                return "\(issue.count) intakes reference missing symptom entries."
+            case .missingNoteEntryReferences:
+                return "\(issue.count) collaborator notes reference missing symptom entries."
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 }
 

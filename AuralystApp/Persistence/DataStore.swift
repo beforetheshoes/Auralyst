@@ -56,6 +56,10 @@ final class DataStore: Observable {
         try databaseClient.updateSymptomEntry(entry)
     }
 
+    func deleteSymptomEntry(id: UUID) throws {
+        try databaseClient.deleteSymptomEntry(id)
+    }
+
     // MARK: - Collaborator Note Operations
 
     func createCollaboratorNote(for journal: SQLiteJournal, entry: SQLiteSymptomEntry? = nil, authorName: String? = nil, text: String) throws -> SQLiteCollaboratorNote {

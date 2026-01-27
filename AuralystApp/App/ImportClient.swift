@@ -2,12 +2,13 @@ import Foundation
 import Dependencies
 
 struct ImportClient {
-    var importJournal: @Sendable (_ url: URL, _ replaceExisting: Bool) async throws -> ImportResult
+    var analyze: @Sendable (_ url: URL) async throws -> ImportAnalysis
+    var importJournal: @Sendable (_ url: URL, _ replaceExisting: Bool, _ resolution: ImportResolution) async throws -> ImportResult
 }
 
 private enum ImportClientKey: DependencyKey {
     static let liveValue = ImportClient(
-        importJournal: { url, replaceExisting in
+        analyze: { url in
             try await Task.detached {
                 let accessGranted = url.startAccessingSecurityScopedResource()
                 defer {
@@ -15,13 +16,31 @@ private enum ImportClientKey: DependencyKey {
                         url.stopAccessingSecurityScopedResource()
                     }
                 }
-                return try DataImporter.importFile(at: url, replaceExisting: replaceExisting)
+                return try DataImporter.analyzeFile(at: url)
+            }.value
+        },
+        importJournal: { url, replaceExisting, resolution in
+            try await Task.detached {
+                let accessGranted = url.startAccessingSecurityScopedResource()
+                defer {
+                    if accessGranted {
+                        url.stopAccessingSecurityScopedResource()
+                    }
+                }
+                return try DataImporter.importFile(
+                    at: url,
+                    replaceExisting: replaceExisting,
+                    resolution: resolution
+                )
             }.value
         }
     )
 
     static let testValue = ImportClient(
-        importJournal: { _, _ in
+        analyze: { _ in
+            throw ImportError.invalidPayload("ImportClient.analyze unimplemented")
+        },
+        importJournal: { _, _, _ in
             throw ImportError.invalidPayload("ImportClient.importJournal unimplemented")
         }
     )

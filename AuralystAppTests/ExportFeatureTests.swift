@@ -18,6 +18,14 @@ struct ExportFeatureTests {
         ) {
             ExportFeature()
         } withDependencies: {
+            $0.exportPreflightClient.check = { inputJournal in
+                #expect(inputJournal.id == journal.id)
+                return ExportPreflightReport(issues: [])
+            }
+            $0.exportPreflightClient.autoFix = { _ in
+                Issue.record("Auto-fix should not run for clean data")
+                return ExportPreflightReport(issues: [])
+            }
             $0.fileExportClient.export = { inputJournal, format in
                 #expect(inputJournal.id == journal.id)
                 #expect(format == .csv)
@@ -36,8 +44,20 @@ struct ExportFeatureTests {
             $0.errorMessage = nil
         }
 
+        await store.receive(\.preflightResponse) {
+            $0.isGenerating = false
+        }
+
+        await store.receive(\.proceedExport) {
+            $0.isGenerating = true
+            $0.errorMessage = nil
+        }
+
         await store.receive(\.exportResponse) {
             $0.isGenerating = false
+            $0.isAutoFixing = false
+            $0.preflightReport = nil
+            $0.pendingFormat = nil
             $0.exportedFileURL = expectedURL
             $0.savedDestinationURL = nil
             $0.isShowingDocumentPicker = true
@@ -58,6 +78,8 @@ struct ExportFeatureTests {
         ) {
             ExportFeature()
         } withDependencies: {
+            $0.exportPreflightClient.check = { _ in ExportPreflightReport(issues: []) }
+            $0.exportPreflightClient.autoFix = { _ in ExportPreflightReport(issues: []) }
             $0.fileExportClient.export = { _, _ in
                 throw SampleError()
             }
@@ -73,8 +95,18 @@ struct ExportFeatureTests {
             $0.errorMessage = nil
         }
 
+        await store.receive(\.preflightResponse) {
+            $0.isGenerating = false
+        }
+
+        await store.receive(\.proceedExport) {
+            $0.isGenerating = true
+            $0.errorMessage = nil
+        }
+
         await store.receive(\.exportResponse) {
             $0.isGenerating = false
+            $0.isAutoFixing = false
             $0.errorMessage = "failed"
             $0.exportedFileURL = nil
             $0.savedDestinationURL = nil
@@ -94,6 +126,8 @@ struct ExportFeatureTests {
         ) {
             ExportFeature()
         } withDependencies: {
+            $0.exportPreflightClient.check = { _ in ExportPreflightReport(issues: []) }
+            $0.exportPreflightClient.autoFix = { _ in ExportPreflightReport(issues: []) }
             $0.fileExportClient.export = { _, _ in expectedURL }
             $0.fileExportClient.cleanup = { url in
                 await cleanupRecorder.record(url)
@@ -110,8 +144,20 @@ struct ExportFeatureTests {
             $0.errorMessage = nil
         }
 
+        await store.receive(\.preflightResponse) {
+            $0.isGenerating = false
+        }
+
+        await store.receive(\.proceedExport) {
+            $0.isGenerating = true
+            $0.errorMessage = nil
+        }
+
         await store.receive(\.exportResponse) {
             $0.isGenerating = false
+            $0.isAutoFixing = false
+            $0.preflightReport = nil
+            $0.pendingFormat = nil
             $0.exportedFileURL = nil
             $0.savedDestinationURL = expectedURL
             $0.isShowingDocumentPicker = false
@@ -134,6 +180,8 @@ struct ExportFeatureTests {
         ) {
             ExportFeature()
         } withDependencies: {
+            $0.exportPreflightClient.check = { _ in ExportPreflightReport(issues: []) }
+            $0.exportPreflightClient.autoFix = { _ in ExportPreflightReport(issues: []) }
             $0.fileExportClient.export = { _, _ in temporary }
             $0.fileExportClient.cleanup = { url in
                 await cleanupRecorder.record(url)
@@ -149,8 +197,20 @@ struct ExportFeatureTests {
             $0.errorMessage = nil
         }
 
+        await store.receive(\.preflightResponse) {
+            $0.isGenerating = false
+        }
+
+        await store.receive(\.proceedExport) {
+            $0.isGenerating = true
+            $0.errorMessage = nil
+        }
+
         await store.receive(\.exportResponse) {
             $0.isGenerating = false
+            $0.isAutoFixing = false
+            $0.preflightReport = nil
+            $0.pendingFormat = nil
             $0.exportedFileURL = nil
             $0.savedDestinationURL = nil
             $0.isShowingDocumentPicker = false
@@ -172,6 +232,8 @@ struct ExportFeatureTests {
         ) {
             ExportFeature()
         } withDependencies: {
+            $0.exportPreflightClient.check = { _ in ExportPreflightReport(issues: []) }
+            $0.exportPreflightClient.autoFix = { _ in ExportPreflightReport(issues: []) }
             $0.fileExportClient.export = { _, _ in destination }
             $0.fileExportClient.cleanup = { _ in }
             $0.fileExportDestinationClient.present = { url, _ in
@@ -185,8 +247,20 @@ struct ExportFeatureTests {
             $0.errorMessage = nil
         }
 
+        await store.receive(\.preflightResponse) {
+            $0.isGenerating = false
+        }
+
+        await store.receive(\.proceedExport) {
+            $0.isGenerating = true
+            $0.errorMessage = nil
+        }
+
         await store.receive(\.exportResponse) {
             $0.isGenerating = false
+            $0.isAutoFixing = false
+            $0.preflightReport = nil
+            $0.pendingFormat = nil
             $0.exportedFileURL = nil
             $0.savedDestinationURL = destination
             $0.isShowingDocumentPicker = false
@@ -196,6 +270,71 @@ struct ExportFeatureTests {
 
         await store.send(.clearSavedDestination) {
             $0.savedDestinationURL = nil
+        }
+    }
+
+    @MainActor
+    @Test("Preflight issues present dialog and auto-fix proceeds")
+    func preflightIssuesAutoFixAndExport() async {
+        let journal = SQLiteJournal()
+        let expectedURL = URL(fileURLWithPath: "/tmp/Preflight.json")
+        let issues = [
+            ExportPreflightIssue(
+                kind: .missingScheduleReferences,
+                count: 2,
+                examples: ["a -> b"]
+            )
+        ]
+
+        let store = TestStore(
+            initialState: ExportFeature.State(journal: journal)
+        ) {
+            ExportFeature()
+        } withDependencies: {
+            $0.exportPreflightClient.check = { _ in ExportPreflightReport(issues: issues) }
+            $0.exportPreflightClient.autoFix = { _ in ExportPreflightReport(issues: []) }
+            $0.fileExportClient.export = { _, _ in expectedURL }
+            $0.fileExportClient.cleanup = { _ in }
+            $0.fileExportDestinationClient.present = { url, _ in .documentPicker(url) }
+        }
+
+        await store.send(.exportTapped(.json)) {
+            $0.isGenerating = true
+            $0.errorMessage = nil
+        }
+
+        await store.receive(\.preflightResponse) {
+            $0.isGenerating = false
+            $0.preflightReport = ExportPreflightReport(issues: issues)
+            $0.pendingFormat = .json
+            $0.isShowingPreflightDialog = true
+        }
+
+        await store.send(.preflightAutoFixTapped) {
+            $0.isShowingPreflightDialog = false
+            $0.isGenerating = true
+            $0.isAutoFixing = true
+        }
+
+        await store.receive(\.preflightAutoFixResponse) {
+            $0.isGenerating = false
+            $0.isAutoFixing = false
+            $0.preflightReport = nil
+        }
+
+        await store.receive(\.proceedExport) {
+            $0.isGenerating = true
+            $0.errorMessage = nil
+        }
+
+        await store.receive(\.exportResponse) {
+            $0.isGenerating = false
+            $0.isAutoFixing = false
+            $0.preflightReport = nil
+            $0.pendingFormat = nil
+            $0.exportedFileURL = expectedURL
+            $0.savedDestinationURL = nil
+            $0.isShowingDocumentPicker = true
         }
     }
 }

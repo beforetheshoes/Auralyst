@@ -181,4 +181,64 @@ struct MedicationQuickLogLoaderSuite {
         #expect(snapshot.takenByScheduleID[schedule.id]?.medicationID == scheduledMedication.id)
         #expect(snapshot.takenByScheduleID[asNeededMedication.id]?.medicationID == asNeededMedication.id)
     }
+
+    @MainActor
+    @Test("Schedule persistence drops missing schedule references")
+    func schedulePersistenceDropsMissingScheduleReferences() throws {
+        try prepareTestDependencies()
+
+        let store = DataStore()
+        let journal = store.createJournal()
+        let medication = store.createMedication(
+            for: journal,
+            name: "Fallback",
+            defaultAmount: 1,
+            defaultUnit: "pill"
+        )
+
+        @Dependency(\.defaultDatabase) var database
+        let persistedScheduleID = try database.read { db in
+            try MedicationQuickLogSection.scheduleIDToPersist(scheduleID: medication.id, db: db)
+        }
+
+        #expect(persistedScheduleID == nil)
+    }
+
+    @MainActor
+    @Test("Schedule persistence keeps real schedule references")
+    func schedulePersistenceKeepsRealScheduleReferences() throws {
+        try prepareTestDependencies()
+
+        let store = DataStore()
+        let journal = store.createJournal()
+        let medication = store.createMedication(
+            for: journal,
+            name: "Real",
+            defaultAmount: 1,
+            defaultUnit: "pill"
+        )
+
+        @Dependency(\.defaultDatabase) var database
+        let schedule = SQLiteMedicationSchedule(
+            medicationID: medication.id,
+            label: "Morning",
+            amount: 1,
+            unit: "pill",
+            cadence: "daily",
+            interval: 1,
+            daysOfWeekMask: MedicationWeekday.mask(for: MedicationWeekday.allCases),
+            hour: 8,
+            minute: 0,
+            timeZoneIdentifier: TimeZone.current.identifier,
+            isActive: true,
+            sortOrder: 0
+        )
+        try insertSchedule(schedule, database: database)
+
+        let persistedScheduleID = try database.read { db in
+            try MedicationQuickLogSection.scheduleIDToPersist(scheduleID: schedule.id, db: db)
+        }
+
+        #expect(persistedScheduleID == schedule.id)
+    }
 }

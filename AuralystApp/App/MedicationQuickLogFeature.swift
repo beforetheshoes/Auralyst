@@ -5,6 +5,7 @@ import Foundation
 @Reducer
 struct MedicationQuickLogFeature {
     @Dependency(\.continuousClock) var clock
+    @Dependency(\.notificationCenter) var notificationCenter
 
     @ObservableState
     struct State: Equatable {
@@ -26,6 +27,12 @@ struct MedicationQuickLogFeature {
         case refreshRequested
         case selectedDateChanged(Date)
         case loadResponse(TaskResult<MedicationQuickLogSnapshot>)
+        case cancelNotifications
+    }
+
+    private enum CancelID {
+        case medicationChanges
+        case intakeChanges
     }
 
     var body: some Reducer<State, Action> {
@@ -36,7 +43,7 @@ struct MedicationQuickLogFeature {
                 state.errorMessage = nil
                 let journalID = state.journalID
                 let date = state.selectedDate
-                return .run { send in
+                let loadEffect: Effect<Action> = .run { send in
                     await send(
                         .loadResponse(
                             TaskResult {
@@ -46,6 +53,22 @@ struct MedicationQuickLogFeature {
                         )
                     )
                 }
+
+                let medicationChanges: Effect<Action> = .run { [notificationCenter] send in
+                    for await _ in notificationCenter.notifications(named: .medicationsDidChange) {
+                        await send(.refreshRequested)
+                    }
+                }
+                .cancellable(id: CancelID.medicationChanges, cancelInFlight: true)
+
+                let intakeChanges: Effect<Action> = .run { [notificationCenter] send in
+                    for await _ in notificationCenter.notifications(named: .medicationIntakesDidChange) {
+                        await send(.refreshRequested)
+                    }
+                }
+                .cancellable(id: CancelID.intakeChanges, cancelInFlight: true)
+
+                return .merge(loadEffect, medicationChanges, intakeChanges)
 
             case .refreshRequested:
                 return .run { [clock] send in
@@ -67,6 +90,12 @@ struct MedicationQuickLogFeature {
                 state.isLoading = false
                 state.errorMessage = error.localizedDescription
                 return .none
+
+            case .cancelNotifications:
+                return .merge(
+                    .cancel(id: CancelID.medicationChanges),
+                    .cancel(id: CancelID.intakeChanges)
+                )
             }
         }
     }

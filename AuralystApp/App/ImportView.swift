@@ -35,10 +35,10 @@ struct ImportView: View {
                         viewStore.send(.importTapped)
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(viewStore.selectedFileURL == nil || viewStore.isImporting)
+                    .disabled(viewStore.selectedFileURL == nil || viewStore.isImporting || viewStore.isAnalyzing)
 
-                    if viewStore.isImporting {
-                        ProgressView("Importing…")
+                    if viewStore.isAnalyzing || viewStore.isImporting {
+                        ProgressView(viewStore.isAnalyzing ? "Checking data…" : "Importing…")
                             .progressViewStyle(.circular)
                     }
 
@@ -106,8 +106,45 @@ struct ImportView: View {
                         "Imported \(result.summary.importedEntries) entries, \(result.summary.importedMedications) medications, \(result.summary.importedSchedules) schedules, \(result.summary.importedIntakes) intakes, and \(result.summary.importedCollaboratorNotes) notes."
                     )
                 }
+                .confirmationDialog(
+                    "Import Issues Found",
+                    isPresented: viewStore.binding(
+                        get: \.showIssuesDialog,
+                        send: { _ in .dismissIssuesDialog }
+                    ),
+                    presenting: viewStore.analysis
+                ) { _ in
+                    Button("Fix Automatically and Import") {
+                        viewStore.send(.importWithAutoFixTapped)
+                    }
+                    Button("Cancel", role: .cancel) {
+                        viewStore.send(.dismissIssuesDialog)
+                    }
+                } message: { analysis in
+                    Text(issuesMessage(analysis))
+                }
             }
         }
+    }
+}
+
+private extension ImportView {
+    func issuesMessage(_ analysis: ImportAnalysis) -> String {
+        let lines = analysis.fixableIssues.map { issue in
+            switch issue.kind {
+            case .missingScheduleReferences:
+                return "\(issue.count) intakes reference missing schedules."
+            case .missingIntakeEntryReferences:
+                return "\(issue.count) intakes reference missing symptom entries."
+            case .missingNoteEntryReferences:
+                return "\(issue.count) collaborator notes reference missing symptom entries."
+            case .missingMedicationReferences:
+                return "\(issue.count) records reference missing medications."
+            case .journalMismatch:
+                return "\(issue.count) records reference a different journal."
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 }
 

@@ -72,6 +72,7 @@ struct SyncStatusFeature {
     struct State: Equatable {
         var status = SyncStatus()
         var latestState: SyncEngineClient.State = .idle
+        var syncingSince: Date?
         var shouldStartSync: Bool
         var overridePhaseRaw: String?
         var isObserving = false
@@ -84,10 +85,18 @@ struct SyncStatusFeature {
         case retryTapped
         case startSyncResponse(TaskResult<Void>)
         case syncEngineStateUpdated(SyncEngineClient.State)
+        case syncStallTimeoutFired
     }
 
     @Dependency(\.syncEngine) private var syncEngine
     @Dependency(\.date) private var dateGenerator
+    @Dependency(\.continuousClock) private var clock
+    @Dependency(\.syncStallTimeoutDuration) private var syncStallTimeoutDuration
+
+    private enum CancelID {
+        case syncStallTimeout
+    }
+
 
     var body: some Reducer<State, Action> {
         Reduce { state, action in
@@ -105,7 +114,7 @@ struct SyncStatusFeature {
                     guard state.overridePhaseRaw == nil else { return .none }
                     if case .error = state.status.phase { return .none }
                     state.status.phase = .idle
-                    return .none
+                    return .cancel(id: CancelID.syncStallTimeout)
                 case .inactive:
                     return .none
                 @unknown default:
@@ -131,16 +140,21 @@ struct SyncStatusFeature {
                 guard state.overridePhaseRaw == nil else { return .none }
 
                 if syncState.isSynchronizing {
+                    if !previousState.isSynchronizing {
+                        state.syncingSince = dateGenerator.now
+                    }
                     if state.status.lastSuccessfulSync == nil {
                         state.status.phase = .syncing
                     } else {
                         state.status.phase = .upToDate
                     }
-                    return .none
+                    return scheduleSyncStallTimeout()
                 }
 
                 if case .error = state.status.phase { return .none }
 
+                let cancelTimeout = Effect<Action>.cancel(id: CancelID.syncStallTimeout)
+                state.syncingSince = nil
                 if syncState.isRunning {
                     if previousState.isSynchronizing || state.status.lastSuccessfulSync == nil {
                         state.status.lastSuccessfulSync = dateGenerator.now
@@ -148,6 +162,24 @@ struct SyncStatusFeature {
                     state.status.phase = .upToDate
                 } else {
                     state.status.phase = .idle
+                }
+                return cancelTimeout
+
+            case .syncStallTimeoutFired:
+                guard state.overridePhaseRaw == nil else { return .none }
+                guard state.latestState.isSynchronizing else { return .none }
+
+                // Fallback: avoid a stuck yellow indicator by promoting to up-to-date
+                // after the engine has reported synchronizing for long enough.
+                let now = dateGenerator.now
+                let syncHasStalled =
+                    !state.latestState.isSendingChanges &&
+                    !state.latestState.isFetchingChanges
+                let syncHasTimedOut = state.syncingSince.map { now.timeIntervalSince($0) >= syncStallTimeoutDuration.timeInterval } ?? false
+
+                if syncHasStalled || syncHasTimedOut {
+                    state.status.lastSuccessfulSync = state.status.lastSuccessfulSync ?? now
+                    state.status.phase = .upToDate
                 }
                 return .none
             }
@@ -186,6 +218,14 @@ private extension SyncStatusFeature {
         return .merge(observationEffect, startEffect)
     }
 
+    func scheduleSyncStallTimeout() -> Effect<Action> {
+        .run { [clock] send in
+            try await clock.sleep(for: syncStallTimeoutDuration)
+            await send(.syncStallTimeoutFired)
+        }
+        .cancellable(id: CancelID.syncStallTimeout, cancelInFlight: true)
+    }
+
     func applyOverrideIfNeeded(state: inout State) -> Bool {
         guard let overridePhaseRaw = state.overridePhaseRaw else { return false }
         let trimmed = overridePhaseRaw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -198,6 +238,26 @@ private extension SyncStatusFeature {
             state.status.lastSuccessfulSync = resolved.lastSuccessfulSync
             return true
         }
+    }
+}
+
+private enum SyncStallTimeoutDurationKey: DependencyKey {
+    static let liveValue: Duration = .seconds(12)
+    static let testValue: Duration = .seconds(12)
+    static let previewValue: Duration = .seconds(12)
+}
+
+extension DependencyValues {
+    var syncStallTimeoutDuration: Duration {
+        get { self[SyncStallTimeoutDurationKey.self] }
+        set { self[SyncStallTimeoutDurationKey.self] = newValue }
+    }
+}
+
+private extension Duration {
+    var timeInterval: TimeInterval {
+        let components = self.components
+        return TimeInterval(components.seconds) + (TimeInterval(components.attoseconds) / 1_000_000_000_000_000_000)
     }
 }
 
