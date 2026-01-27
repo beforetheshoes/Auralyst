@@ -250,6 +250,195 @@ struct DataImporterSuite {
     }
 
     @MainActor
+    @Test("Import analysis detects fixable missing references")
+    func importAnalysisDetectsFixableIssues() throws {
+        try prepareTestDependencies()
+
+        let store = DataStore()
+        let journal = store.createJournal()
+        let entry = try store.createSymptomEntry(for: journal, severity: 4)
+        let medication = store.createMedication(for: journal, name: "Analyze", defaultAmount: 1, defaultUnit: "pill")
+
+        @Dependency(\.defaultDatabase) var database
+        let schedule = SQLiteMedicationSchedule(
+            medicationID: medication.id,
+            label: "Morning",
+            amount: 1,
+            unit: "pill",
+            cadence: "daily",
+            interval: 1,
+            daysOfWeekMask: MedicationWeekday.mask(for: MedicationWeekday.allCases),
+            hour: 8,
+            minute: 0,
+            isActive: true,
+            sortOrder: 0
+        )
+        try insertSchedule(schedule, database: database)
+        let intake = SQLiteMedicationIntake(
+            medicationID: medication.id,
+            entryID: entry.id,
+            scheduleID: schedule.id,
+            amount: 1,
+            unit: "pill",
+            timestamp: Date(timeIntervalSince1970: 1_726_601_200),
+            origin: "scheduled"
+        )
+        try insertIntake(intake, database: database)
+        let note = try store.createCollaboratorNote(
+            for: journal,
+            entry: entry,
+            authorName: "Alex",
+            text: "Analyze note"
+        )
+
+        let jsonData = try DataExporter.exportJSON(for: journal)
+        var object = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
+        object?["schedules"] = []
+        object?["entries"] = []
+        let mutatedData = try JSONSerialization.data(withJSONObject: object ?? [:], options: [.prettyPrinted, .sortedKeys])
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Auralyst-import-analysis.json")
+        try mutatedData.write(to: url, options: [.atomic])
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let analysis = try DataImporter.analyzeFile(at: url)
+        #expect(!analysis.hasBlockingIssues)
+        #expect(analysis.fixableIssues.contains(where: { $0.kind == .missingScheduleReferences }))
+        #expect(analysis.fixableIssues.contains(where: { $0.kind == .missingIntakeEntryReferences }))
+        #expect(analysis.fixableIssues.contains(where: { $0.kind == .missingNoteEntryReferences }))
+        // Silence unused warnings in case analysis skips some issues.
+        #expect(note.id != UUID())
+    }
+
+    @MainActor
+    @Test("Auto-fix import clears invalid references")
+    func autoFixImportClearsInvalidReferences() throws {
+        try prepareTestDependencies()
+
+        let store = DataStore()
+        let journal = store.createJournal()
+        let entry = try store.createSymptomEntry(for: journal, severity: 4)
+        let medication = store.createMedication(for: journal, name: "AutoFix", defaultAmount: 1, defaultUnit: "pill")
+
+        @Dependency(\.defaultDatabase) var database
+        let schedule = SQLiteMedicationSchedule(
+            medicationID: medication.id,
+            label: "Morning",
+            amount: 1,
+            unit: "pill",
+            cadence: "daily",
+            interval: 1,
+            daysOfWeekMask: MedicationWeekday.mask(for: MedicationWeekday.allCases),
+            hour: 8,
+            minute: 0,
+            isActive: true,
+            sortOrder: 0
+        )
+        try insertSchedule(schedule, database: database)
+        let intake = SQLiteMedicationIntake(
+            medicationID: medication.id,
+            entryID: entry.id,
+            scheduleID: schedule.id,
+            amount: 1,
+            unit: "pill",
+            timestamp: Date(timeIntervalSince1970: 1_726_601_200),
+            origin: "scheduled"
+        )
+        try insertIntake(intake, database: database)
+        let note = try store.createCollaboratorNote(
+            for: journal,
+            entry: entry,
+            authorName: "Alex",
+            text: "Auto-fix note"
+        )
+
+        let jsonData = try DataExporter.exportJSON(for: journal)
+        var object = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
+        object?["schedules"] = []
+        object?["entries"] = []
+        let mutatedData = try JSONSerialization.data(withJSONObject: object ?? [:], options: [.prettyPrinted, .sortedKeys])
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Auralyst-import-autofix.json")
+        try mutatedData.write(to: url, options: [.atomic])
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        _ = try DataImporter.importFile(at: url, replaceExisting: true, resolution: .autoFix)
+
+        let refs = try database.read { db -> (String?, String?, String?) in
+            let scheduleID = try String.fetchOne(
+                db,
+                sql: "SELECT scheduleID FROM sqLiteMedicationIntake WHERE medicationID = ? LIMIT 1",
+                arguments: [medication.id.uuidString]
+            )
+            let entryID = try String.fetchOne(
+                db,
+                sql: "SELECT entryID FROM sqLiteMedicationIntake WHERE medicationID = ? LIMIT 1",
+                arguments: [medication.id.uuidString]
+            )
+            let noteEntryID = try String.fetchOne(
+                db,
+                sql: "SELECT entryID FROM sqLiteCollaboratorNote WHERE id = ? LIMIT 1",
+                arguments: [note.id.uuidString]
+            )
+            return (scheduleID, entryID, noteEntryID)
+        }
+
+        #expect(refs.0 == nil)
+        #expect(refs.1 == nil)
+        #expect(refs.2 == nil)
+        #expect(intake.id != UUID())
+    }
+
+    @MainActor
+    @Test("Import analysis flags missing medication references as blocking")
+    func importAnalysisFlagsMissingMedicationReferences() throws {
+        try prepareTestDependencies()
+
+        let store = DataStore()
+        let journal = store.createJournal()
+        let medication = store.createMedication(for: journal, name: "Block", defaultAmount: 1, defaultUnit: "pill")
+
+        @Dependency(\.defaultDatabase) var database
+        let schedule = SQLiteMedicationSchedule(
+            medicationID: medication.id,
+            label: "Morning",
+            amount: 1,
+            unit: "pill",
+            cadence: "daily",
+            interval: 1,
+            daysOfWeekMask: MedicationWeekday.mask(for: MedicationWeekday.allCases),
+            hour: 8,
+            minute: 0,
+            isActive: true,
+            sortOrder: 0
+        )
+        try insertSchedule(schedule, database: database)
+        let intake = SQLiteMedicationIntake(
+            medicationID: medication.id,
+            scheduleID: schedule.id,
+            amount: 1,
+            unit: "pill",
+            timestamp: Date(timeIntervalSince1970: 1_726_601_200),
+            origin: "scheduled"
+        )
+        try insertIntake(intake, database: database)
+
+        let jsonData = try DataExporter.exportJSON(for: journal)
+        var object = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
+        object?["medications"] = []
+        let mutatedData = try JSONSerialization.data(withJSONObject: object ?? [:], options: [.prettyPrinted, .sortedKeys])
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Auralyst-import-blocking.json")
+        try mutatedData.write(to: url, options: [.atomic])
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let analysis = try DataImporter.analyzeFile(at: url)
+        #expect(analysis.hasBlockingIssues)
+        #expect(analysis.blockingIssues.contains(where: { $0.kind == .missingMedicationReferences }))
+
+        #expect(throws: ImportError.self) {
+            _ = try DataImporter.importFile(at: url, replaceExisting: true)
+        }
+    }
+
+    @MainActor
     @Test("CSV import supports empty journal exports")
     func csvImportSupportsEmptyJournal() throws {
         try prepareTestDependencies()

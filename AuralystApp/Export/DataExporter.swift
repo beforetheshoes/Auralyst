@@ -379,14 +379,66 @@ private extension DataExporter {
                 .order { $0.sortOrder.asc() }
                 .fetchAll(db)
 
-            return Dataset(
+            let dataset = Dataset(
                 entries: entries,
                 collaboratorNotes: collaboratorNotes,
                 medications: medications,
                 intakes: intakes,
                 schedules: schedules
             )
+            return sanitize(dataset)
         }
+    }
+
+    static func sanitize(_ dataset: Dataset) -> Dataset {
+        let scheduleIDs = Set(dataset.schedules.map { $0.id })
+        let entryIDs = Set(dataset.entries.map { $0.id })
+
+        let sanitizedIntakes = dataset.intakes.map { intake in
+            var scheduleID = intake.scheduleID
+            var entryID = intake.entryID
+            if let scheduleRef = scheduleID, !scheduleIDs.contains(scheduleRef) {
+                scheduleID = nil
+            }
+            if let entryRef = entryID, !entryIDs.contains(entryRef) {
+                entryID = nil
+            }
+            guard scheduleID != intake.scheduleID || entryID != intake.entryID else {
+                return intake
+            }
+            return SQLiteMedicationIntake(
+                id: intake.id,
+                medicationID: intake.medicationID,
+                entryID: entryID,
+                scheduleID: scheduleID,
+                amount: intake.amount,
+                unit: intake.unit,
+                timestamp: intake.timestamp,
+                scheduledDate: intake.scheduledDate,
+                origin: intake.origin,
+                notes: intake.notes
+            )
+        }
+
+        let sanitizedNotes = dataset.collaboratorNotes.map { note in
+            guard let entryID = note.entryID, !entryIDs.contains(entryID) else { return note }
+            return SQLiteCollaboratorNote(
+                id: note.id,
+                journalID: note.journalID,
+                entryID: nil,
+                authorName: note.authorName,
+                text: note.text,
+                timestamp: note.timestamp
+            )
+        }
+
+        return Dataset(
+            entries: dataset.entries,
+            collaboratorNotes: sanitizedNotes,
+            medications: dataset.medications,
+            intakes: sanitizedIntakes,
+            schedules: dataset.schedules
+        )
     }
 
     static func csvEscape(_ value: String?) -> String {

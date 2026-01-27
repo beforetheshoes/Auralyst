@@ -342,6 +342,7 @@ private struct SymptomEntryEditorView: View {
     let entryID: UUID
 
     @Environment(\.dismiss) private var dismiss
+    @Dependency(\.databaseClient) private var databaseClient
 
     @State private var loaded = false
     @State private var timestamp: Date = .now
@@ -349,6 +350,8 @@ private struct SymptomEntryEditorView: View {
     @State private var isMenstruating: Bool = false
     @State private var note: String = ""
     @State private var originalEntry: SQLiteSymptomEntry?
+    @State private var showDeleteConfirmation = false
+    @State private var deleteErrorMessage: String?
 
     var body: some View {
         Form {
@@ -379,6 +382,17 @@ private struct SymptomEntryEditorView: View {
             Section("Timestamp") {
                 DatePicker("Logged At", selection: $timestamp, displayedComponents: [.date, .hourAndMinute])
             }
+
+            Section {
+                Button("Delete Entry", role: .destructive) {
+                    showDeleteConfirmation = true
+                }
+                if let deleteErrorMessage {
+                    Text(deleteErrorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
         }
         .navigationTitle("Edit Entry")
         .inlineNavigationTitleDisplay()
@@ -389,6 +403,16 @@ private struct SymptomEntryEditorView: View {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { save() }
             }
+        }
+        .confirmationDialog(
+            "Delete this entry?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Entry", role: .destructive) { delete() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the symptom entry. Linked notes and intakes will be detached.")
         }
         .onAppear(perform: loadIfNeeded)
     }
@@ -439,6 +463,20 @@ private struct SymptomEntryEditorView: View {
             dismiss()
         } catch {
             print("Failed to save entry: \(error)")
+        }
+    }
+
+    private func delete() {
+        guard let entry = originalEntry else {
+            deleteErrorMessage = "Entry could not be loaded."
+            return
+        }
+
+        do {
+            try databaseClient.deleteSymptomEntry(entry.id)
+            dismiss()
+        } catch {
+            deleteErrorMessage = error.localizedDescription
         }
     }
 }

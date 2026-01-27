@@ -15,6 +15,34 @@ struct ImportResult: Equatable {
     let summary: ImportSummary
 }
 
+enum ImportResolution: Equatable {
+    case strict
+    case autoFix
+}
+
+enum ImportIssueKind: Equatable {
+    case missingScheduleReferences
+    case missingIntakeEntryReferences
+    case missingNoteEntryReferences
+    case missingMedicationReferences
+    case journalMismatch
+}
+
+struct ImportIssue: Equatable {
+    let kind: ImportIssueKind
+    let count: Int
+    let examples: [String]
+    let isFixable: Bool
+}
+
+struct ImportAnalysis: Equatable {
+    let fixableIssues: [ImportIssue]
+    let blockingIssues: [ImportIssue]
+
+    var hasIssues: Bool { !fixableIssues.isEmpty || !blockingIssues.isEmpty }
+    var hasBlockingIssues: Bool { !blockingIssues.isEmpty }
+}
+
 enum ImportFormat {
     case json
     case csv
@@ -42,6 +70,37 @@ enum ImportError: Error, LocalizedError {
 
 struct DataImporter {
     static func importFile(at url: URL, replaceExisting: Bool) throws -> ImportResult {
+        try importFile(at: url, replaceExisting: replaceExisting, resolution: .strict)
+    }
+
+    static func analyzeFile(at url: URL) throws -> ImportAnalysis {
+        let payload = try parsePayload(at: url)
+        return analyze(payload)
+    }
+
+    static func importFile(
+        at url: URL,
+        replaceExisting: Bool,
+        resolution: ImportResolution
+    ) throws -> ImportResult {
+        let payload = try parsePayload(at: url)
+        let analysis = analyze(payload)
+        if analysis.hasBlockingIssues {
+            throw ImportError.invalidPayload(blockingMessage(for: analysis.blockingIssues))
+        }
+        if resolution == .strict, analysis.hasIssues {
+            // Strict mode still allows the historical synthetic schedule fix,
+            // but other issues should surface clearly.
+            let message = blockingMessage(for: analysis.fixableIssues)
+            throw ImportError.invalidPayload(message)
+        }
+
+        let sanitizedPayload = sanitize(payload, resolution: resolution)
+        try validate(sanitizedPayload)
+        return try importPayload(sanitizedPayload, replaceExisting: replaceExisting)
+    }
+
+    private static func parsePayload(at url: URL) throws -> ImportPayload {
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw ImportError.missingFile
         }
@@ -54,10 +113,7 @@ struct DataImporter {
         case .csv:
             payload = try parseCSV(data: data)
         }
-
-        let sanitizedPayload = sanitize(payload)
-        try validate(sanitizedPayload)
-        return try importPayload(sanitizedPayload, replaceExisting: replaceExisting)
+        return payload
     }
 }
 
@@ -152,21 +208,34 @@ private extension DataImporter {
         }
     }
 
-    static func sanitize(_ payload: ImportPayload) -> ImportPayload {
+    static func sanitize(_ payload: ImportPayload, resolution: ImportResolution) -> ImportPayload {
         let scheduleIDs = Set(payload.schedules.map { $0.id })
+        let entryIDs = Set(payload.entries.map { $0.id })
+
         let sanitizedIntakes = payload.intakes.map { intake in
-            guard let scheduleID = intake.scheduleID, !scheduleIDs.contains(scheduleID) else {
+            var scheduleID = intake.scheduleID
+            var entryID = intake.entryID
+
+            if let scheduleRef = scheduleID, !scheduleIDs.contains(scheduleRef) {
+                // Historical data can use scheduleID == medicationID as a synthetic schedule.
+                if scheduleRef == intake.medicationID || resolution == .autoFix {
+                    scheduleID = nil
+                }
+            }
+
+            if let entryRef = entryID, !entryIDs.contains(entryRef), resolution == .autoFix {
+                entryID = nil
+            }
+
+            guard scheduleID != intake.scheduleID || entryID != intake.entryID else {
                 return intake
             }
-            // Historical data can use scheduleID == medicationID as a synthetic schedule.
-            guard scheduleID == intake.medicationID else {
-                return intake
-            }
+
             return ImportPayload.Intake(
                 id: intake.id,
                 medicationID: intake.medicationID,
-                entryID: intake.entryID,
-                scheduleID: nil,
+                entryID: entryID,
+                scheduleID: scheduleID,
                 amount: intake.amount,
                 unit: intake.unit,
                 timestamp: intake.timestamp,
@@ -176,10 +245,27 @@ private extension DataImporter {
             )
         }
 
+        let sanitizedNotes: [ImportPayload.CollaboratorNote]
+        if resolution == .autoFix {
+            sanitizedNotes = payload.collaboratorNotes.map { note in
+                guard let entryID = note.entryID, !entryIDs.contains(entryID) else { return note }
+                return ImportPayload.CollaboratorNote(
+                    id: note.id,
+                    journalID: note.journalID,
+                    entryID: nil,
+                    authorName: note.authorName,
+                    text: note.text,
+                    timestamp: note.timestamp
+                )
+            }
+        } else {
+            sanitizedNotes = payload.collaboratorNotes
+        }
+
         return ImportPayload(
             journal: payload.journal,
             entries: payload.entries,
-            collaboratorNotes: payload.collaboratorNotes,
+            collaboratorNotes: sanitizedNotes,
             medications: payload.medications,
             intakes: sanitizedIntakes,
             schedules: payload.schedules
@@ -522,6 +608,126 @@ private extension DataImporter {
             isActive: bool(from: row["isActive"]),
             sortOrder: sortOrder
         )
+    }
+
+    static func analyze(_ payload: ImportPayload) -> ImportAnalysis {
+        let scheduleIDs = Set(payload.schedules.map { $0.id })
+        let entryIDs = Set(payload.entries.map { $0.id })
+        let medicationIDs = Set(payload.medications.map { $0.id })
+
+        let missingScheduleIntakes = payload.intakes.filter { intake in
+            guard let scheduleID = intake.scheduleID else { return false }
+            return !scheduleIDs.contains(scheduleID)
+        }
+        let realMissingScheduleIntakes = missingScheduleIntakes.filter { intake in
+            guard let scheduleID = intake.scheduleID else { return false }
+            return scheduleID != intake.medicationID
+        }
+        let missingIntakeEntryRefs = payload.intakes.filter { intake in
+            guard let entryID = intake.entryID else { return false }
+            return !entryIDs.contains(entryID)
+        }
+        let missingNoteEntryRefs = payload.collaboratorNotes.filter { note in
+            guard let entryID = note.entryID else { return false }
+            return !entryIDs.contains(entryID)
+        }
+
+        var fixableIssues: [ImportIssue] = []
+        if !realMissingScheduleIntakes.isEmpty {
+            fixableIssues.append(
+                ImportIssue(
+                    kind: .missingScheduleReferences,
+                    count: realMissingScheduleIntakes.count,
+                    examples: realMissingScheduleIntakes.prefix(3).map {
+                        "\($0.id.uuidString) -> \($0.scheduleID?.uuidString ?? "nil")"
+                    },
+                    isFixable: true
+                )
+            )
+        }
+        if !missingIntakeEntryRefs.isEmpty {
+            fixableIssues.append(
+                ImportIssue(
+                    kind: .missingIntakeEntryReferences,
+                    count: missingIntakeEntryRefs.count,
+                    examples: missingIntakeEntryRefs.prefix(3).map {
+                        "\($0.id.uuidString) -> \($0.entryID?.uuidString ?? "nil")"
+                    },
+                    isFixable: true
+                )
+            )
+        }
+        if !missingNoteEntryRefs.isEmpty {
+            fixableIssues.append(
+                ImportIssue(
+                    kind: .missingNoteEntryReferences,
+                    count: missingNoteEntryRefs.count,
+                    examples: missingNoteEntryRefs.prefix(3).map {
+                        "\($0.id.uuidString) -> \($0.entryID?.uuidString ?? "nil")"
+                    },
+                    isFixable: true
+                )
+            )
+        }
+
+        let journalID = payload.journal.id
+        let entryMismatches = payload.entries.filter { $0.journalID != journalID }
+        let medicationMismatches = payload.medications.filter { $0.journalID != journalID }
+        let noteMismatches = payload.collaboratorNotes.filter { $0.journalID != journalID }
+        let journalMismatchCount = entryMismatches.count + medicationMismatches.count + noteMismatches.count
+
+        let missingMedicationSchedules = payload.schedules.filter { !medicationIDs.contains($0.medicationID) }
+        let missingMedicationIntakes = payload.intakes.filter { !medicationIDs.contains($0.medicationID) }
+
+        var blockingIssues: [ImportIssue] = []
+        if journalMismatchCount > 0 {
+            let examples =
+                entryMismatches.prefix(1).map { $0.id.uuidString }
+                + medicationMismatches.prefix(1).map { $0.id.uuidString }
+                + noteMismatches.prefix(1).map { $0.id.uuidString }
+            blockingIssues.append(
+                ImportIssue(
+                    kind: .journalMismatch,
+                    count: journalMismatchCount,
+                    examples: examples,
+                    isFixable: false
+                )
+            )
+        }
+        if !missingMedicationSchedules.isEmpty || !missingMedicationIntakes.isEmpty {
+            let scheduleExamples = missingMedicationSchedules.prefix(2).map {
+                "\($0.id.uuidString) -> \($0.medicationID.uuidString)"
+            }
+            let intakeExamples = missingMedicationIntakes.prefix(2).map {
+                "\($0.id.uuidString) -> \($0.medicationID.uuidString)"
+            }
+            blockingIssues.append(
+                ImportIssue(
+                    kind: .missingMedicationReferences,
+                    count: missingMedicationSchedules.count + missingMedicationIntakes.count,
+                    examples: scheduleExamples + intakeExamples,
+                    isFixable: false
+                )
+            )
+        }
+
+        return ImportAnalysis(fixableIssues: fixableIssues, blockingIssues: blockingIssues)
+    }
+
+    static func blockingMessage(for issues: [ImportIssue]) -> String {
+        guard let issue = issues.first else { return "Unknown import issue." }
+        switch issue.kind {
+        case .missingScheduleReferences:
+            return "One or more intakes reference missing schedules."
+        case .missingIntakeEntryReferences:
+            return "One or more intakes reference missing symptom entries."
+        case .missingNoteEntryReferences:
+            return "One or more collaborator notes reference missing symptom entries."
+        case .missingMedicationReferences:
+            return "One or more records reference missing medications."
+        case .journalMismatch:
+            return "One or more records reference a different journal."
+        }
     }
 
     static func validate(_ payload: ImportPayload) throws {

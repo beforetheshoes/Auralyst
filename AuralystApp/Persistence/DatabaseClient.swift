@@ -12,6 +12,7 @@ struct DatabaseClient: Sendable {
     var fetchSymptomEntry: @Sendable (_ id: UUID) -> SQLiteSymptomEntry?
     var fetchSymptomEntries: @Sendable (_ journal: SQLiteJournal) throws -> [SQLiteSymptomEntry]
     var updateSymptomEntry: @Sendable (_ entry: SQLiteSymptomEntry) throws -> Void
+    var deleteSymptomEntry: @Sendable (_ id: UUID) throws -> Void
     var createCollaboratorNote: @Sendable (_ journal: SQLiteJournal, _ entry: SQLiteSymptomEntry?, _ authorName: String?, _ text: String) throws -> SQLiteCollaboratorNote
     var deleteMedication: @Sendable (_ medicationID: UUID) throws -> Void
     var createMedication: @Sendable (_ journal: SQLiteJournal, _ name: String, _ defaultAmount: Double?, _ defaultUnit: String?) -> SQLiteMedication
@@ -118,6 +119,26 @@ private enum DatabaseClientKey: DependencyKey {
                     logger.info("Updated symptom entry: \(entry.id)")
                 } catch {
                     logger.error("Error updating symptom entry \(entry.id): \(error.localizedDescription)")
+                    throw error
+                }
+            },
+            deleteSymptomEntry: { entryID in
+                do {
+                    try database.write { db in
+                        // Foreign key actions are not guaranteed in tests, so detach first.
+                        try db.execute(
+                            sql: "UPDATE sqLiteMedicationIntake SET entryID = NULL WHERE lower(entryID) = lower(?)",
+                            arguments: [entryID.uuidString]
+                        )
+                        try db.execute(
+                            sql: "UPDATE sqLiteCollaboratorNote SET entryID = NULL WHERE lower(entryID) = lower(?)",
+                            arguments: [entryID.uuidString]
+                        )
+                        try SQLiteSymptomEntry.find(entryID).delete().execute(db)
+                    }
+                    logger.info("Deleted symptom entry: \(entryID)")
+                } catch {
+                    logger.error("Error deleting symptom entry \(entryID): \(error.localizedDescription)")
                     throw error
                 }
             },

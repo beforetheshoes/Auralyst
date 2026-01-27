@@ -165,6 +165,80 @@ struct DataStoreSuite {
     }
 
     @MainActor
+    @Test("Deleting a symptom entry detaches linked records")
+    func deleteSymptomEntryDetachesLinkedRecords() throws {
+        try prepareTestDependencies()
+
+        @Dependency(\.defaultDatabase) var database
+
+        let store = DataStore()
+        let journal = store.createJournal()
+        let entry = try store.createSymptomEntry(for: journal, severity: 6, note: "Headache")
+        let medication = store.createMedication(for: journal, name: "Ibuprofen", defaultAmount: 2, defaultUnit: "pill")
+
+        let intake = SQLiteMedicationIntake(
+            medicationID: medication.id,
+            entryID: entry.id,
+            amount: 2,
+            unit: "pill",
+            timestamp: .now
+        )
+        let note = SQLiteCollaboratorNote(
+            journalID: journal.id,
+            entryID: entry.id,
+            authorName: "Alex",
+            text: "Follow up"
+        )
+        let timestampString = ISO8601DateFormatter().string(from: note.timestamp)
+
+        try database.write { db in
+            try insertIntake(intake, in: db)
+            try db.execute(
+                sql: """
+                INSERT INTO sqLiteCollaboratorNote (id, journalID, entryID, authorName, text, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    note.id.uuidString,
+                    journal.id.uuidString,
+                    entry.id.uuidString,
+                    note.authorName,
+                    note.text,
+                    timestampString,
+                ]
+            )
+        }
+
+        try store.deleteSymptomEntry(id: entry.id)
+
+        #expect(store.fetchSymptomEntry(id: entry.id) == nil)
+
+        let intakeLinkedCount = try database.read { db in
+            try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*) FROM sqLiteMedicationIntake
+                WHERE lower(id) = lower(?) AND entryID IS NOT NULL
+                """,
+                arguments: [intake.id.uuidString]
+            ) ?? 0
+        }
+        #expect(intakeLinkedCount == 0)
+
+        let collaboratorLinkedCount = try database.read { db in
+            try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*) FROM sqLiteCollaboratorNote
+                WHERE lower(id) = lower(?) AND entryID IS NOT NULL
+                """,
+                arguments: [note.id.uuidString]
+            ) ?? 0
+        }
+        #expect(collaboratorLinkedCount == 0)
+    }
+
+    @MainActor
     @Test("Insert helpers persist linkage metadata")
     func insertHelpersPersistLinkageMetadata() throws {
         try prepareTestDependencies()

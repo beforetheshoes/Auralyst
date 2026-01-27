@@ -3,6 +3,7 @@ import Foundation
 import SwiftUI
 import Dependencies
 import ComposableArchitecture
+import GRDB
 
 struct MedicationQuickLogSection: View {
     let store: StoreOf<MedicationQuickLogFeature>
@@ -171,18 +172,19 @@ struct MedicationQuickLogSection: View {
         let times = scheduledDateTime(for: schedule, on: selectedDate)
         let amountValue = schedule.amount ?? medication.defaultAmount
         let unitValue = schedule.unit ?? medication.defaultUnit
-        let newIntake = SQLiteMedicationIntake(
-            id: UUID(),
-            medicationID: schedule.medicationID,
-            scheduleID: schedule.id,
-            amount: amountValue,
-            unit: unitValue,
-            timestamp: times.timestamp,
-            scheduledDate: times.scheduledDate,
-            origin: "scheduled"
-        )
         do {
             try database.write { db in
+                let persistedScheduleID = try Self.scheduleIDToPersist(scheduleID: schedule.id, db: db)
+                let newIntake = SQLiteMedicationIntake(
+                    id: UUID(),
+                    medicationID: schedule.medicationID,
+                    scheduleID: persistedScheduleID,
+                    amount: amountValue,
+                    unit: unitValue,
+                    timestamp: times.timestamp,
+                    scheduledDate: times.scheduledDate,
+                    origin: "scheduled"
+                )
                 try SQLiteMedicationIntake.insert { newIntake }.execute(db)
             }
             NotificationCenter.default.post(name: .medicationIntakesDidChange, object: nil)
@@ -190,6 +192,16 @@ struct MedicationQuickLogSection: View {
         } catch {
             // ignore for now
         }
+    }
+    
+    static func scheduleIDToPersist(scheduleID: UUID, db: Database) throws -> UUID? {
+        // Only persist a scheduleID that actually exists in the schedules table.
+        let count = try Int.fetchOne(
+            db,
+            sql: "SELECT COUNT(*) FROM sqLiteMedicationSchedule WHERE lower(id) = lower(?) OR id = ?",
+            arguments: [scheduleID.uuidString, scheduleID]
+        ) ?? 0
+        return count > 0 ? scheduleID : nil
     }
 
     private func unlogScheduledDose(

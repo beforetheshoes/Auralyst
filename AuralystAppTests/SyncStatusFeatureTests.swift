@@ -48,6 +48,7 @@ struct SyncStatusFeatureTests {
 
         await store.receive(\.syncEngineStateUpdated) {
             $0.latestState = .syncing
+            $0.syncingSince = fixedDate
             $0.status.phase = .syncing
         }
 
@@ -62,11 +63,116 @@ struct SyncStatusFeatureTests {
 
         await store.receive(\.syncEngineStateUpdated) {
             $0.latestState = .upToDate
+            $0.syncingSince = nil
             $0.status.phase = .upToDate
             $0.status.lastSuccessfulSync = fixedDate
         }
 
         stateStream.finish()
+        await store.finish()
+    }
+
+    @MainActor
+    @Test("Stall timeout promotes syncing-without-work to up to date")
+    func stallTimeoutPromotesToUpToDate() async throws {
+        try prepareTestDependencies()
+
+        let startState = StartCallState()
+        let stalledState = SyncEngineClient.State(
+            isRunning: true,
+            isSynchronizing: true,
+            isSendingChanges: false,
+            isFetchingChanges: false
+        )
+        let stateStream = SyncEngineStateStream(initialState: stalledState)
+        let client = SyncEngineClient(
+            start: {
+                try await withCheckedThrowingContinuation { continuation in
+                    Task { await startState.capture(continuation) }
+                }
+            },
+            stop: {},
+            observeState: { stateStream.stream }
+        )
+
+        let fixedDate = Date(timeIntervalSince1970: 1_704_000_100)
+
+        let store = TestStore(
+            initialState: SyncStatusFeature.State(
+                shouldStartSync: true,
+                overridePhaseRaw: nil
+            )
+        ) {
+            SyncStatusFeature()
+        } withDependencies: {
+            $0.syncEngine = client
+            $0.date.now = fixedDate
+            $0.syncStallTimeoutDuration = .milliseconds(20)
+        }
+
+        await store.send(.task) {
+            $0.isStarting = true
+            $0.status.phase = .syncing
+            $0.isObserving = true
+        }
+
+        await store.receive(\.syncEngineStateUpdated) {
+            $0.latestState = stalledState
+            $0.syncingSince = fixedDate
+            $0.status.phase = .syncing
+        }
+
+        await startState.waitForStartCall()
+        await startState.resumeStartSuccessfully()
+
+        await store.receive(\.startSyncResponse) {
+            $0.isStarting = false
+        }
+
+        try? await Task.sleep(nanoseconds: 80_000_000)
+
+        await store.receive(\.syncStallTimeoutFired) {
+            $0.status.phase = .upToDate
+            $0.status.lastSuccessfulSync = fixedDate
+        }
+
+        stateStream.finish()
+        await store.finish()
+    }
+
+    @MainActor
+    @Test("Stall timeout promotes long-running syncing even if work flags stay true")
+    func stallTimeoutPromotesLongRunningSync() async throws {
+        try prepareTestDependencies()
+
+        let busyState = SyncEngineClient.State(
+            isRunning: true,
+            isSynchronizing: true,
+            isSendingChanges: true,
+            isFetchingChanges: true
+        )
+        let syncingSince = Date(timeIntervalSince1970: 1_704_000_200)
+        let now = syncingSince.addingTimeInterval(60)
+
+        let store = TestStore(
+            initialState: SyncStatusFeature.State(
+                status: SyncStatus(phase: .syncing, lastSuccessfulSync: nil),
+                latestState: busyState,
+                syncingSince: syncingSince,
+                shouldStartSync: true,
+                overridePhaseRaw: nil
+            )
+        ) {
+            SyncStatusFeature()
+        } withDependencies: {
+            $0.date.now = now
+            $0.syncStallTimeoutDuration = .milliseconds(20)
+        }
+
+        await store.send(.syncStallTimeoutFired) {
+            $0.status.phase = .upToDate
+            $0.status.lastSuccessfulSync = now
+        }
         await store.finish()
     }
 
