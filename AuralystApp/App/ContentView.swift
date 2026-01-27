@@ -75,6 +75,20 @@ struct ContentView: View {
                     )
                 }
             }
+            .sheet(
+                isPresented: viewStore.binding(
+                    get: \.showingImport,
+                    send: AppFeature.Action.setShowingImport
+                )
+            ) {
+                ImportView(
+                    store: Store(
+                        initialState: ImportFeature.State(hasExistingJournal: primaryJournal != nil)
+                    ) {
+                        ImportFeature()
+                    }
+                )
+            }
         }
     }
 }
@@ -123,7 +137,8 @@ private extension ContentView {
                     journal: journal,
                     onAddEntry: { viewStore.send(.addEntryTapped) },
                     onShare: { viewStore.send(.shareManagementTapped(journal)) },
-                    onExport: { viewStore.send(.exportTapped) }
+                    onExport: { viewStore.send(.exportTapped) },
+                    onImport: { viewStore.send(.importTapped) }
                 )
             } else {
                 VStack(spacing: 20) {
@@ -139,6 +154,11 @@ private extension ContentView {
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(false)
+
+                    Button("Import Journal") {
+                        viewStore.send(.importTapped)
+                    }
+                    .buttonStyle(.bordered)
                 }
                 .padding()
             }

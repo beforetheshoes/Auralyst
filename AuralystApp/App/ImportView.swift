@@ -1,0 +1,117 @@
+import SwiftUI
+import UniformTypeIdentifiers
+import ComposableArchitecture
+
+struct ImportView: View {
+    let store: StoreOf<ImportFeature>
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        WithViewStore(store, observe: { $0 }) { viewStore in
+            NavigationStack {
+                VStack(spacing: 20) {
+                    Text("Import Data")
+                        .font(.largeTitle)
+                        .bold()
+
+                    Text("Import a previously exported JSON or CSV journal file. Importing will replace any existing data.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+
+                    Button("Choose File") {
+                        viewStore.send(.chooseFileTapped)
+                    }
+                    .buttonStyle(.bordered)
+
+                    if let url = viewStore.selectedFileURL {
+                        Text(url.lastPathComponent)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Button("Import Journal") {
+                        viewStore.send(.importTapped)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(viewStore.selectedFileURL == nil || viewStore.isImporting)
+
+                    if viewStore.isImporting {
+                        ProgressView("Importing…")
+                            .progressViewStyle(.circular)
+                    }
+
+                    if let error = viewStore.errorMessage {
+                        Text(error)
+                            .foregroundStyle(.red)
+                            .font(.footnote)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+                }
+                .padding()
+                .navigationTitle("Import")
+                .inlineNavigationTitleDisplay()
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { dismiss() }
+                    }
+                }
+                .fileImporter(
+                    isPresented: viewStore.binding(
+                        get: \.showFilePicker,
+                        send: { _ in .filePickerDismissed }
+                    ),
+                    allowedContentTypes: [UTType.json, UTType.commaSeparatedText],
+                    allowsMultipleSelection: false
+                ) { result in
+                    switch result {
+                    case .success(let urls):
+                        if let url = urls.first {
+                            viewStore.send(.filePicked(url))
+                        }
+                    case .failure(let error):
+                        viewStore.send(.importResponse(.failure(error)))
+                    }
+                }
+                .alert(
+                    "Replace Existing Data?",
+                    isPresented: viewStore.binding(
+                        get: \.showReplaceConfirmation,
+                        send: ImportFeature.Action.setReplaceConfirmation
+                    )
+                ) {
+                    Button("Replace", role: .destructive) {
+                        viewStore.send(.confirmReplaceTapped)
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Importing will delete your current journal data and replace it with the selected file.")
+                }
+                .alert(
+                    "Import Complete",
+                    isPresented: viewStore.binding(
+                        get: { $0.lastResult != nil },
+                        send: { _ in .clearResult }
+                    ),
+                    presenting: viewStore.lastResult
+                ) { _ in
+                    Button("OK") { viewStore.send(.clearResult) }
+                } message: { result in
+                    Text(
+                        "Imported \(result.summary.importedEntries) entries, \(result.summary.importedMedications) medications, \(result.summary.importedSchedules) schedules, \(result.summary.importedIntakes) intakes, and \(result.summary.importedCollaboratorNotes) notes."
+                    )
+                }
+            }
+        }
+    }
+}
+
+#Preview {
+    ImportView(
+        store: Store(initialState: ImportFeature.State(hasExistingJournal: true)) {
+            ImportFeature()
+        }
+    )
+}

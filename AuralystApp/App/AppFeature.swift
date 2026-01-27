@@ -11,6 +11,7 @@ struct AppFeature {
         var syncStatus: SyncStatusFeature.State
         var showingAddEntry = false
         var showingExport = false
+        var showingImport = false
         var shareManagementJournal: SQLiteJournal?
         var hasDeterminedInitialData = false
         var bypassInitialOverlay: Bool
@@ -39,6 +40,8 @@ struct AppFeature {
         case setShareManagementJournal(SQLiteJournal?)
         case exportTapped
         case setShowingExport(Bool)
+        case importTapped
+        case setShowingImport(Bool)
         case createJournalTapped
         case journalsChanged(isEmpty: Bool)
         case entriesCountChanged(Int)
@@ -76,6 +79,12 @@ struct AppFeature {
                 return .none
             case .setShowingExport(let isPresented):
                 state.showingExport = isPresented
+                return .none
+            case .importTapped:
+                state.showingImport = true
+                return .none
+            case .setShowingImport(let isPresented):
+                state.showingImport = isPresented
                 return .none
             case .createJournalTapped:
                 _ = databaseClient.createJournal()
