@@ -115,6 +115,9 @@ struct JournalEntriesView: View {
         .onChange(of: medicationIntakes) { _, _ in
             quickLogStore.send(.refreshRequested)
         }
+        .task(id: journal.id) {
+            quickLogStore.send(.task)
+        }
         .navigationTitle("Journal")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {

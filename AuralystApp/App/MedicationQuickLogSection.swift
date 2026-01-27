@@ -95,7 +95,6 @@ struct MedicationQuickLogSection: View {
                         .font(.caption)
                 }
             }
-            .task { viewStore.send(.task) }
         }
     }
 
