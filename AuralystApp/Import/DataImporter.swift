@@ -217,6 +217,10 @@ private extension DataImporter {
 
             let row = makeRow(headers: headers, values: values)
             switch section {
+            case "journal":
+                if journal == nil {
+                    journal = try parseJournal(row)
+                }
             case "summary":
                 continue
             case "symptom_entries":
@@ -259,7 +263,7 @@ private extension DataImporter {
 
     static func isSectionHeader(_ line: String) -> Bool {
         switch line {
-        case "summary", "symptom_entries", "collaborator_notes", "medications", "medication_intakes", "medication_schedules":
+        case "journal", "summary", "symptom_entries", "collaborator_notes", "medications", "medication_intakes", "medication_schedules":
             return true
         default:
             return false
@@ -389,6 +393,15 @@ private extension DataImporter {
         )
     }
 
+    static func parseJournal(_ row: [String: String]) throws -> ImportPayload.Journal {
+        guard let id = uuid(from: row["id"]),
+              let createdAt = date(from: row["createdAt"]) else {
+            throw ImportError.invalidCSV("Invalid journal row.")
+        }
+
+        return ImportPayload.Journal(id: id, createdAt: createdAt)
+    }
+
     static func parseCollaboratorNote(_ row: [String: String]) throws -> ImportPayload.CollaboratorNote {
         guard let id = uuid(from: row["id"]),
               let journalID = uuid(from: row["journal_id"]),
@@ -502,6 +515,21 @@ private extension DataImporter {
             return !entryIDs.contains(entryID)
         }) {
             throw ImportError.invalidPayload("One or more collaborator notes reference missing symptom entries.")
+        }
+
+        let scheduleIDs = Set(payload.schedules.map { $0.id })
+        if payload.intakes.contains(where: { intake in
+            guard let scheduleID = intake.scheduleID else { return false }
+            return !scheduleIDs.contains(scheduleID)
+        }) {
+            throw ImportError.invalidPayload("One or more intakes reference missing schedules.")
+        }
+
+        if payload.intakes.contains(where: { intake in
+            guard let entryID = intake.entryID else { return false }
+            return !entryIDs.contains(entryID)
+        }) {
+            throw ImportError.invalidPayload("One or more intakes reference missing symptom entries.")
         }
     }
 

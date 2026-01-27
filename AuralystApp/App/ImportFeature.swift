@@ -1,6 +1,7 @@
 import ComposableArchitecture
 import Dependencies
 import Foundation
+import GRDB
 
 @Reducer
 struct ImportFeature {
@@ -22,12 +23,14 @@ struct ImportFeature {
         case importTapped
         case confirmReplaceTapped
         case setReplaceConfirmation(Bool)
+        case checkExistingJournalResponse(TaskResult<Bool>)
         case importResponse(TaskResult<ImportResult>)
         case clearError
         case clearResult
     }
 
     @Dependency(\.importClient) private var importClient
+    @Dependency(\.defaultDatabase) private var database
 
     var body: some Reducer<State, Action> {
         Reduce { state, action in
@@ -48,11 +51,17 @@ struct ImportFeature {
             case .importTapped:
                 guard !state.isImporting else { return .none }
                 guard state.selectedFileURL != nil else { return .none }
-                if state.hasExistingJournal {
-                    state.showReplaceConfirmation = true
-                    return .none
+                return .run { send in
+                    await send(
+                        .checkExistingJournalResponse(
+                            TaskResult {
+                                try database.read { db in
+                                    (try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sqLiteJournal") ?? 0) > 0
+                                }
+                            }
+                        )
+                    )
                 }
-                return startImport(state: &state, replaceExisting: false)
 
             case .confirmReplaceTapped:
                 state.showReplaceConfirmation = false
@@ -60,6 +69,18 @@ struct ImportFeature {
 
             case .setReplaceConfirmation(let isPresented):
                 state.showReplaceConfirmation = isPresented
+                return .none
+
+            case .checkExistingJournalResponse(.success(let hasJournal)):
+                state.hasExistingJournal = hasJournal
+                if hasJournal {
+                    state.showReplaceConfirmation = true
+                    return .none
+                }
+                return startImport(state: &state, replaceExisting: false)
+
+            case .checkExistingJournalResponse(.failure(let error)):
+                state.errorMessage = error.localizedDescription
                 return .none
 
             case .importResponse(.success(let result)):

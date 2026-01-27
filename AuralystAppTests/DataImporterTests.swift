@@ -136,4 +136,32 @@ struct DataImporterSuite {
         #expect(counts.3 == 1)
         #expect(counts.4 == 1)
     }
+
+    @MainActor
+    @Test("CSV import supports empty journal exports")
+    func csvImportSupportsEmptyJournal() throws {
+        try prepareTestDependencies()
+
+        let store = DataStore()
+        let journal = store.createJournal()
+
+        let csvData = try DataExporter.exportCSV(for: journal)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Auralyst-import-empty.csv")
+        try csvData.write(to: url, options: [.atomic])
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let result = try DataImporter.importFile(at: url, replaceExisting: true)
+        #expect(result.summary.importedEntries == 0)
+        #expect(result.summary.importedMedications == 0)
+        #expect(result.summary.importedSchedules == 0)
+        #expect(result.summary.importedIntakes == 0)
+        #expect(result.summary.importedCollaboratorNotes == 0)
+
+        @Dependency(\.defaultDatabase) var database
+        let journalCount = try database.read { db -> Int in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sqLiteJournal") ?? 0
+        }
+        #expect(journalCount == 1)
+    }
 }

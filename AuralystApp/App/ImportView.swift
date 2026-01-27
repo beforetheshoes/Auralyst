@@ -97,7 +97,10 @@ struct ImportView: View {
                     ),
                     presenting: viewStore.lastResult
                 ) { _ in
-                    Button("OK") { viewStore.send(.clearResult) }
+                    Button("OK") {
+                        viewStore.send(.clearResult)
+                        dismiss()
+                    }
                 } message: { result in
                     Text(
                         "Imported \(result.summary.importedEntries) entries, \(result.summary.importedMedications) medications, \(result.summary.importedSchedules) schedules, \(result.summary.importedIntakes) intakes, and \(result.summary.importedCollaboratorNotes) notes."

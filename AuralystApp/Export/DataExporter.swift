@@ -17,6 +17,10 @@ struct DataExporter {
         let isoFormat = Date.ISO8601FormatStyle(includingFractionalSeconds: true, timeZone: .current)
 
         var lines: [String] = []
+        lines.append("journal")
+        lines.append("id,createdAt")
+        lines.append("\(journal.id.uuidString),\(isoFormat.format(journal.createdAt))")
+        lines.append("")
         lines.append("summary")
         lines.append("metric,value")
         lines.append("exportedEntries,\(summary.exportedEntries)")
