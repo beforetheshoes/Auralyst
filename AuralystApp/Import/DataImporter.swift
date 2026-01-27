@@ -55,8 +55,9 @@ struct DataImporter {
             payload = try parseCSV(data: data)
         }
 
-        try validate(payload)
-        return try importPayload(payload, replaceExisting: replaceExisting)
+        let sanitizedPayload = sanitize(payload)
+        try validate(sanitizedPayload)
+        return try importPayload(sanitizedPayload, replaceExisting: replaceExisting)
     }
 }
 
@@ -149,6 +150,40 @@ private extension DataImporter {
                 importedCollaboratorNotes: collaboratorNotes.count
             )
         }
+    }
+
+    static func sanitize(_ payload: ImportPayload) -> ImportPayload {
+        let scheduleIDs = Set(payload.schedules.map { $0.id })
+        let sanitizedIntakes = payload.intakes.map { intake in
+            guard let scheduleID = intake.scheduleID, !scheduleIDs.contains(scheduleID) else {
+                return intake
+            }
+            // Historical data can use scheduleID == medicationID as a synthetic schedule.
+            guard scheduleID == intake.medicationID else {
+                return intake
+            }
+            return ImportPayload.Intake(
+                id: intake.id,
+                medicationID: intake.medicationID,
+                entryID: intake.entryID,
+                scheduleID: nil,
+                amount: intake.amount,
+                unit: intake.unit,
+                timestamp: intake.timestamp,
+                scheduledDate: intake.scheduledDate,
+                origin: intake.origin,
+                notes: intake.notes
+            )
+        }
+
+        return ImportPayload(
+            journal: payload.journal,
+            entries: payload.entries,
+            collaboratorNotes: payload.collaboratorNotes,
+            medications: payload.medications,
+            intakes: sanitizedIntakes,
+            schedules: payload.schedules
+        )
     }
 
     static func format(for url: URL) throws -> ImportFormat {
@@ -509,20 +544,20 @@ private extension DataImporter {
             throw ImportError.invalidPayload("One or more intakes reference missing medications.")
         }
 
-        let entryIDs = Set(payload.entries.map { $0.id })
-        if payload.collaboratorNotes.contains(where: { note in
-            guard let entryID = note.entryID else { return false }
-            return !entryIDs.contains(entryID)
-        }) {
-            throw ImportError.invalidPayload("One or more collaborator notes reference missing symptom entries.")
-        }
-
         let scheduleIDs = Set(payload.schedules.map { $0.id })
         if payload.intakes.contains(where: { intake in
             guard let scheduleID = intake.scheduleID else { return false }
             return !scheduleIDs.contains(scheduleID)
         }) {
             throw ImportError.invalidPayload("One or more intakes reference missing schedules.")
+        }
+
+        let entryIDs = Set(payload.entries.map { $0.id })
+        if payload.collaboratorNotes.contains(where: { note in
+            guard let entryID = note.entryID else { return false }
+            return !entryIDs.contains(entryID)
+        }) {
+            throw ImportError.invalidPayload("One or more collaborator notes reference missing symptom entries.")
         }
 
         if payload.intakes.contains(where: { intake in
