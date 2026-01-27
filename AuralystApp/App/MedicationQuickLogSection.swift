@@ -375,6 +375,7 @@ struct AsNeededIntakeView: View {
                     viewStore.send(.clearDidSave)
                     dismiss()
                 }
+                .task { viewStore.send(.task) }
             }
         }
     }
