@@ -28,6 +28,7 @@ struct AsNeededIntakeFeature {
     }
 
     @Dependency(\.defaultDatabase) private var database
+    @Dependency(\.date) private var date
 
     var body: some Reducer<State, Action> {
         BindingReducer()
@@ -41,7 +42,7 @@ struct AsNeededIntakeFeature {
                 state.unit = state.medication.defaultUnit ?? ""
                 let cal = Calendar.current
                 let dayStart = cal.startOfDay(for: state.defaultDate)
-                let now = Date()
+                let now = date.now
                 let comps = cal.dateComponents([.hour, .minute], from: now)
                 var dtc = cal.dateComponents([.year, .month, .day], from: dayStart)
                 dtc.hour = comps.hour

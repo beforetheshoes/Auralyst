@@ -138,6 +138,118 @@ struct DataImporterSuite {
     }
 
     @MainActor
+    @Test("JSON import drops references to missing schedules")
+    func jsonImportDropsMissingScheduleReferences() throws {
+        try prepareTestDependencies()
+
+        let store = DataStore()
+        let journal = store.createJournal()
+        let medication = store.createMedication(for: journal, name: "Schedule Ref", defaultAmount: 1, defaultUnit: "pill")
+
+        @Dependency(\.defaultDatabase) var database
+        let schedule = SQLiteMedicationSchedule(
+            medicationID: medication.id,
+            label: "Morning",
+            amount: 1,
+            unit: "pill",
+            cadence: "daily",
+            interval: 1,
+            daysOfWeekMask: MedicationWeekday.mask(for: MedicationWeekday.allCases),
+            hour: 8,
+            minute: 0,
+            isActive: true,
+            sortOrder: 0
+        )
+        try insertSchedule(schedule, database: database)
+        let intake = SQLiteMedicationIntake(
+            medicationID: medication.id,
+            scheduleID: schedule.id,
+            amount: 1,
+            unit: "pill",
+            timestamp: Date(timeIntervalSince1970: 1_726_601_200),
+            origin: "scheduled"
+        )
+        try insertIntake(intake, database: database)
+
+        let jsonData = try DataExporter.exportJSON(for: journal)
+        var object = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
+        object?["schedules"] = []
+        if var intakes = object?["intakes"] as? [[String: Any]] {
+            intakes = intakes.map { intake in
+                var intake = intake
+                // Historical exports can persist a synthetic scheduleID == medicationID.
+                if let medicationID = intake["medicationID"] as? String {
+                    intake["scheduleID"] = medicationID
+                }
+                return intake
+            }
+            object?["intakes"] = intakes
+        }
+        let mutatedData = try JSONSerialization.data(withJSONObject: object ?? [:], options: [.prettyPrinted, .sortedKeys])
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Auralyst-import-missing-schedule.json")
+        try mutatedData.write(to: url, options: [.atomic])
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        _ = try DataImporter.importFile(at: url, replaceExisting: true)
+
+        let importedScheduleID = try database.read { db -> String? in
+            try String.fetchOne(
+                db,
+                sql: "SELECT scheduleID FROM sqLiteMedicationIntake WHERE medicationID = ? LIMIT 1",
+                arguments: [medication.id.uuidString]
+            )
+        }
+        #expect(importedScheduleID == nil)
+    }
+
+    @MainActor
+    @Test("JSON import fails for non-synthetic missing schedules")
+    func jsonImportFailsForNonSyntheticMissingSchedules() throws {
+        try prepareTestDependencies()
+
+        let store = DataStore()
+        let journal = store.createJournal()
+        let medication = store.createMedication(for: journal, name: "Strict Ref", defaultAmount: 1, defaultUnit: "pill")
+
+        @Dependency(\.defaultDatabase) var database
+        let schedule = SQLiteMedicationSchedule(
+            medicationID: medication.id,
+            label: "Morning",
+            amount: 1,
+            unit: "pill",
+            cadence: "daily",
+            interval: 1,
+            daysOfWeekMask: MedicationWeekday.mask(for: MedicationWeekday.allCases),
+            hour: 9,
+            minute: 0,
+            isActive: true,
+            sortOrder: 0
+        )
+        try insertSchedule(schedule, database: database)
+        let intake = SQLiteMedicationIntake(
+            medicationID: medication.id,
+            scheduleID: schedule.id,
+            amount: 1,
+            unit: "pill",
+            timestamp: Date(timeIntervalSince1970: 1_726_601_200),
+            origin: "scheduled"
+        )
+        try insertIntake(intake, database: database)
+
+        let jsonData = try DataExporter.exportJSON(for: journal)
+        var object = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
+        object?["schedules"] = []
+        let mutatedData = try JSONSerialization.data(withJSONObject: object ?? [:], options: [.prettyPrinted, .sortedKeys])
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Auralyst-import-missing-nonsynthetic.json")
+        try mutatedData.write(to: url, options: [.atomic])
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        #expect(throws: ImportError.self) {
+            _ = try DataImporter.importFile(at: url, replaceExisting: true)
+        }
+    }
+
+    @MainActor
     @Test("CSV import supports empty journal exports")
     func csvImportSupportsEmptyJournal() throws {
         try prepareTestDependencies()
