@@ -49,7 +49,7 @@ struct MedicationQuickLogLoaderSuite {
     @Test("Loads snapshot from a detached task")
     func loaderRunsOffMainActor() async throws {
         let result = try await Task.detached {
-            try await withDependencies {
+            try withDependencies {
                 $0.context = .test
                 try $0.bootstrapDatabase(configureSyncEngine: false)
             } operation: {

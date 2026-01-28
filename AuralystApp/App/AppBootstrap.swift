@@ -35,6 +35,8 @@ private extension AppBootstrap {
     static func seedAutomationFixtures(using dependencies: inout DependencyValues) {
         guard let fixture = ProcessInfo.processInfo.environment["AURALYST_UI_FIXTURE"] else { return }
         switch fixture {
+        case "journal_only":
+            seedJournalOnlyFixture(using: &dependencies)
         case "as_needed_quicklog":
             seedAsNeededFixture(using: &dependencies)
         case "quicklog_initial":
@@ -53,6 +55,19 @@ private extension AppBootstrap {
             }
         } catch {
             // Best-effort cleanup for UI automation.
+        }
+    }
+
+    static func seedJournalOnlyFixture(using dependencies: inout DependencyValues) {
+        do {
+            let database = dependencies.defaultDatabase
+            try database.write { db in
+                guard try SQLiteJournal.all.fetchAll(db).isEmpty else { return }
+                let journal = SQLiteJournal()
+                try SQLiteJournal.insert { journal }.execute(db)
+            }
+        } catch {
+            // Only used for automation fixtures; ignore failures in production builds.
         }
     }
 

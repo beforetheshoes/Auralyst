@@ -56,6 +56,28 @@ final class AuralystAppUITests: XCTestCase {
     }
 
     @MainActor
+    func testAddEntrySavesAndDismisses() throws {
+        let app = makeApp(fixture: "journal_only")
+        app.launch()
+
+        let addEntryButton = app.buttons["Add Entry"]
+        XCTAssertTrue(addEntryButton.waitForExistence(timeout: 5))
+        addEntryButton.tap()
+
+        let newEntryNav = app.navigationBars["New Entry"]
+        XCTAssertTrue(newEntryNav.waitForExistence(timeout: 5))
+
+        let saveButton = app.buttons["Save"]
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 5))
+        saveButton.tap()
+
+        XCTAssertFalse(
+            newEntryNav.waitForExistence(timeout: 2),
+            "Expected Add Entry sheet to dismiss after saving."
+        )
+    }
+
+    @MainActor
     func testLaunchPerformance() throws {
         guard ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != nil else {
             throw XCTSkip("Performance launch test runs only on simulator.")
