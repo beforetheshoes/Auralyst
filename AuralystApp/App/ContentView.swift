@@ -10,6 +10,7 @@ struct ContentView: View {
     @FetchAll var journals: [SQLiteJournal]
     @FetchOne var primaryJournal: SQLiteJournal?
     @FetchAll var entries: [SQLiteSymptomEntry]
+    @State private var addEntryStore: StoreOf<AddEntryFeature>?
 
     var body: some View {
         WithViewStore(store, observe: { $0 }) { viewStore in
@@ -32,6 +33,10 @@ struct ContentView: View {
             }
             .onChange(of: journals.isEmpty) { _, _ in viewStore.send(.journalsChanged(isEmpty: journals.isEmpty)) }
             .onChange(of: entries.count) { _, _ in viewStore.send(.entriesCountChanged(entries.count)) }
+            .onChange(of: viewStore.showingAddEntry) { _, isPresented in
+                guard !isPresented else { return }
+                addEntryStore = nil
+            }
             .onChange(of: viewStore.syncStatus.status.phase) { _, phase in
                 viewStore.send(.syncPhaseChanged(phase))
             }
@@ -42,11 +47,17 @@ struct ContentView: View {
                 )
             ) {
                 if let journal = primaryJournal {
-                    AddEntryView(
-                        store: Store(initialState: AddEntryFeature.State(journalID: journal.id)) {
+                    if let store = addEntryStore {
+                        AddEntryView(store: store)
+                    } else {
+                        let store = Store(initialState: AddEntryFeature.State(journalID: journal.id)) {
                             AddEntryFeature()
                         }
-                    )
+                        AddEntryView(store: store)
+                            .onAppear {
+                                addEntryStore = store
+                            }
+                    }
                 }
             }
             .sheet(
