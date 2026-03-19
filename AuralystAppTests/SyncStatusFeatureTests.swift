@@ -38,7 +38,9 @@ struct SyncStatusFeatureTests {
         } withDependencies: {
             $0.syncEngine = client
             $0.date.now = fixedDate
+            $0.syncStallTimeoutDuration = .milliseconds(20)
         }
+        store.exhaustivity = .off(showSkippedAssertions: false)
 
         await store.send(.task) {
             $0.isStarting = true

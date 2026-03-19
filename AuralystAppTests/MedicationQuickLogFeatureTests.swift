@@ -105,6 +105,8 @@ struct MedicationQuickLogFeatureTests {
             $0.isLoading = false
             $0.snapshot = expectedSnapshot
         }
+
+        await testStore.send(.cancelNotifications)
     }
 
     @MainActor

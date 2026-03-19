@@ -60,7 +60,6 @@ jobs:
             -scheme "$SCHEME" \
             -destination "platform=iOS Simulator,name=$DEVICE" \
             -only-testing:AuralystAppTests \
-            -parallel-testing-enabled YES \
             -resultBundlePath TestResults.xcresult \
             -skipPackagePluginValidation \
             CODE_SIGN_IDENTITY="-" \
