@@ -36,12 +36,17 @@ jobs:
           defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
           defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
 
+      - name: Detect simulator
+        run: |
+          DEVICE=$(xcrun xctrace list devices 2>&1 | grep -oE 'iPhone.*?[^\(]+' | head -1 | awk '{$1=$1;print}' | sed -e "s/ Simulator$//")
+          echo "DEVICE=$DEVICE" >> "$GITHUB_ENV"
+
       - name: Build and test
         run: |
           xcodebuild test \
             -project AuralystApp.xcodeproj \
             -scheme "$SCHEME" \
-            -destination "platform=macOS" \
+            -destination "platform=iOS Simulator,name=$DEVICE" \
             -skip-testing:AuralystAppUITests \
             -resultBundlePath TestResults.xcresult \
             -skipPackagePluginValidation \
@@ -76,12 +81,17 @@ jobs:
           defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
           defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
 
+      - name: Detect simulator
+        run: |
+          DEVICE=$(xcrun xctrace list devices 2>&1 | grep -oE 'iPhone.*?[^\(]+' | head -1 | awk '{$1=$1;print}' | sed -e "s/ Simulator$//")
+          echo "DEVICE=$DEVICE" >> "$GITHUB_ENV"
+
       - name: Build and analyze
         run: |
           xcodebuild clean build analyze \
             -project AuralystApp.xcodeproj \
             -scheme "$SCHEME" \
-            -destination "platform=macOS" \
+            -destination "platform=iOS Simulator,name=$DEVICE" \
             -skipPackagePluginValidation \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
