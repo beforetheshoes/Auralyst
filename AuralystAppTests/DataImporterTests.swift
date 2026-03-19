@@ -5,6 +5,14 @@ import GRDB
 @preconcurrency import SQLiteData
 @testable import AuralystApp
 
+private struct DatabaseRecordCounts {
+    let entries: Int
+    let medications: Int
+    let schedules: Int
+    let intakes: Int
+    let notes: Int
+}
+
 @Suite("Data Importer", .serialized)
 struct DataImporterSuite {
     @MainActor
@@ -56,20 +64,21 @@ struct DataImporterSuite {
         #expect(result.summary.importedIntakes == 1)
         #expect(result.summary.importedCollaboratorNotes == 1)
 
-        let counts = try database.read { db -> (Int, Int, Int, Int, Int) in
-            let entries = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sqLiteSymptomEntry") ?? 0
-            let medications = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sqLiteMedication") ?? 0
-            let schedules = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sqLiteMedicationSchedule") ?? 0
-            let intakes = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sqLiteMedicationIntake") ?? 0
-            let notes = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sqLiteCollaboratorNote") ?? 0
-            return (entries, medications, schedules, intakes, notes)
+        let counts = try database.read { db -> DatabaseRecordCounts in
+            DatabaseRecordCounts(
+                entries: try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sqLiteSymptomEntry") ?? 0,
+                medications: try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sqLiteMedication") ?? 0,
+                schedules: try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sqLiteMedicationSchedule") ?? 0,
+                intakes: try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sqLiteMedicationIntake") ?? 0,
+                notes: try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sqLiteCollaboratorNote") ?? 0
+            )
         }
 
-        #expect(counts.0 == 1)
-        #expect(counts.1 == 1)
-        #expect(counts.2 == 1)
-        #expect(counts.3 == 1)
-        #expect(counts.4 == 1)
+        #expect(counts.entries == 1)
+        #expect(counts.medications == 1)
+        #expect(counts.schedules == 1)
+        #expect(counts.intakes == 1)
+        #expect(counts.notes == 1)
     }
 
     @MainActor
@@ -121,20 +130,21 @@ struct DataImporterSuite {
         #expect(result.summary.importedIntakes == 1)
         #expect(result.summary.importedCollaboratorNotes == 1)
 
-        let counts = try database.read { db -> (Int, Int, Int, Int, Int) in
-            let entries = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sqLiteSymptomEntry") ?? 0
-            let medications = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sqLiteMedication") ?? 0
-            let schedules = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sqLiteMedicationSchedule") ?? 0
-            let intakes = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sqLiteMedicationIntake") ?? 0
-            let notes = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sqLiteCollaboratorNote") ?? 0
-            return (entries, medications, schedules, intakes, notes)
+        let counts = try database.read { db -> DatabaseRecordCounts in
+            DatabaseRecordCounts(
+                entries: try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sqLiteSymptomEntry") ?? 0,
+                medications: try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sqLiteMedication") ?? 0,
+                schedules: try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sqLiteMedicationSchedule") ?? 0,
+                intakes: try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sqLiteMedicationIntake") ?? 0,
+                notes: try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sqLiteCollaboratorNote") ?? 0
+            )
         }
 
-        #expect(counts.0 == 1)
-        #expect(counts.1 == 1)
-        #expect(counts.2 == 1)
-        #expect(counts.3 == 1)
-        #expect(counts.4 == 1)
+        #expect(counts.entries == 1)
+        #expect(counts.medications == 1)
+        #expect(counts.schedules == 1)
+        #expect(counts.intakes == 1)
+        #expect(counts.notes == 1)
     }
 
     @MainActor
@@ -387,6 +397,11 @@ struct DataImporterSuite {
         #expect(intake.id != UUID())
     }
 
+}
+
+// MARK: - Edge Case Tests
+
+extension DataImporterSuite {
     @MainActor
     @Test("Import analysis flags missing medication references as blocking")
     func importAnalysisFlagsMissingMedicationReferences() throws {

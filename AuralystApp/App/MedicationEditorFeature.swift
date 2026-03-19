@@ -220,15 +220,17 @@ struct MedicationEditorFeature {
 
                                     let medicationID = try upsertMedication(
                                         in: db,
-                                        journalID: snapshot.journalID,
-                                        medicationID: snapshot.medicationID,
-                                        name: snapshot.name,
-                                        amount: amountValue,
-                                        unit: unitValue,
-                                        isAsNeeded: snapshot.isAsNeeded,
-                                        useCase: useCaseValue,
-                                        notes: notesValue,
-                                        timestamp: now
+                                        params: MedicationUpsertParams(
+                                            journalID: snapshot.journalID,
+                                            medicationID: snapshot.medicationID,
+                                            name: snapshot.name,
+                                            amount: amountValue,
+                                            unit: unitValue,
+                                            isAsNeeded: snapshot.isAsNeeded,
+                                            useCase: useCaseValue,
+                                            notes: notesValue,
+                                            timestamp: now
+                                        )
                                     )
 
                                     var drafts = snapshot.scheduleDrafts
@@ -263,11 +265,11 @@ struct MedicationEditorFeature {
                             TaskResult {
                                 try database.write { db in
                                     try SQLiteMedicationSchedule
-                                        .where { $0.medicationID == medicationID }
+                                        .where { $0.medicationID.eq(medicationID) }
                                         .delete()
                                         .execute(db)
                                     try SQLiteMedicationIntake
-                                        .where { $0.medicationID == medicationID }
+                                        .where { $0.medicationID.eq(medicationID) }
                                         .delete()
                                         .execute(db)
                                     try SQLiteMedication.find(medicationID).delete().execute(db)
@@ -306,18 +308,28 @@ private func renumberSortOrders(state: inout MedicationEditorFeature.State) {
     }
 }
 
-private func upsertMedication(
-    in db: Database,
-    journalID: UUID,
-    medicationID: UUID?,
-    name: String,
-    amount: Double?,
-    unit: String?,
-    isAsNeeded: Bool,
-    useCase: String?,
-    notes: String?,
-    timestamp: Date
-) throws -> UUID {
+private struct MedicationUpsertParams {
+    let journalID: UUID
+    let medicationID: UUID?
+    let name: String
+    let amount: Double?
+    let unit: String?
+    let isAsNeeded: Bool
+    let useCase: String?
+    let notes: String?
+    let timestamp: Date
+}
+
+private func upsertMedication(in db: Database, params: MedicationUpsertParams) throws -> UUID {
+    let journalID = params.journalID
+    let medicationID = params.medicationID
+    let name = params.name
+    let amount = params.amount
+    let unit = params.unit
+    let isAsNeeded = params.isAsNeeded
+    let useCase = params.useCase
+    let notes = params.notes
+    let timestamp = params.timestamp
     if let medID = medicationID {
         if let existing = try SQLiteMedication.find(medID).fetchOne(db) {
             let updated = SQLiteMedication(
@@ -371,7 +383,7 @@ private func upsertMedication(
 
 private func syncSchedules(in db: Database, medicationID: UUID, drafts: inout [MedicationEditorFeature.ScheduleDraft]) throws {
     let existingSchedules = try SQLiteMedicationSchedule
-        .where { $0.medicationID == medicationID }
+        .where { $0.medicationID.eq(medicationID) }
         .fetchAll(db)
     let existingIDs = Set(existingSchedules.map(\.id))
     let existingByID = Dictionary(uniqueKeysWithValues: existingSchedules.map { ($0.id, $0) })

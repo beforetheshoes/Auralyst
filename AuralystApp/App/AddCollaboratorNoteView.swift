@@ -4,59 +4,43 @@ import ComposableArchitecture
 import Dependencies
 
 struct AddCollaboratorNoteView: View {
-    let store: StoreOf<AddCollaboratorNoteFeature>
+    @Bindable var store: StoreOf<AddCollaboratorNoteFeature>
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        WithViewStore(store, observe: { $0 }) { viewStore in
-            NavigationStack {
-                Form {
-                    Section("Note") {
-                        TextEditor(
-                            text: viewStore.binding(
-                                get: \.text,
-                                send: { .binding(.set(\.text, $0)) }
-                            )
-                        )
+        NavigationStack {
+            Form {
+                Section("Note") {
+                    TextEditor(text: $store.text)
                         .frame(minHeight: 140)
-                    }
+                }
 
-                    Section("Attribution") {
-                        TextField(
-                            "Author (optional)",
-                            text: viewStore.binding(
-                                get: \.authorName,
-                                send: { .binding(.set(\.authorName, $0)) }
-                            )
-                        )
-                    }
+                Section("Attribution") {
+                    TextField("Author (optional)", text: $store.authorName)
                 }
-                .navigationTitle("Collaborator Note")
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { dismiss() }
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Save") { viewStore.send(.saveTapped) }
-                            .disabled(viewStore.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewStore.isSaving)
-                    }
+            }
+            .navigationTitle("Collaborator Note")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
                 }
-                .alert(
-                    "Unable to Save",
-                    isPresented: viewStore.binding(
-                        get: { $0.errorMessage != nil },
-                        send: { _ in .clearError }
-                    )
-                ) {
-                    Button("OK") { viewStore.send(.clearError) }
-                } message: {
-                    Text(viewStore.errorMessage ?? "")
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { store.send(.saveTapped) }
+                        .disabled(store.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isSaving)
                 }
-                .onChange(of: viewStore.didSave) { _, didSave in
-                    guard didSave else { return }
-                    viewStore.send(.clearDidSave)
-                    dismiss()
-                }
+            }
+            .alert(
+                "Unable to Save",
+                isPresented: Binding(get: { store.errorMessage != nil }, set: { _ in store.send(.clearError) })
+            ) {
+                Button("OK") { store.send(.clearError) }
+            } message: {
+                Text(store.errorMessage ?? "")
+            }
+            .onChange(of: store.didSave) { _, didSave in
+                guard didSave else { return }
+                store.send(.clearDidSave)
+                dismiss()
             }
         }
     }
@@ -66,7 +50,7 @@ struct AddCollaboratorNoteView: View {
     withPreviewDataStore {
         let databaseClient = DependencyValues._current.databaseClient
         let journal = databaseClient.createJournal()
-        let entry = try! databaseClient.createSymptomEntry(journal, 5, nil, .now, false)
+        let entry = previewValue { try databaseClient.createSymptomEntry(journal, 5, nil, .now, false) }
 
         AddCollaboratorNoteView(
             store: Store(initialState: AddCollaboratorNoteFeature.State(entryID: entry.id)) {

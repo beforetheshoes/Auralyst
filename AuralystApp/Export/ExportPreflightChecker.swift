@@ -142,7 +142,7 @@ private extension ExportPreflightChecker {
     static func medicationIDs(for journal: SQLiteJournal, db: Database) throws -> [UUID] {
         try SQLiteMedication
             .select { $0.id }
-            .where { $0.journalID == journal.id }
+            .where { $0.journalID.eq(journal.id) }
             .fetchAll(db)
     }
 
@@ -158,7 +158,7 @@ private extension ExportPreflightChecker {
     static func entryIDs(for journal: SQLiteJournal, db: Database) throws -> Set<String> {
         let entries = try SQLiteSymptomEntry
             .select { $0.id }
-            .where { $0.journalID == journal.id }
+            .where { $0.journalID.eq(journal.id) }
             .fetchAll(db)
         return Set(entries.map { $0.uuidString.lowercased() })
     }
@@ -172,7 +172,7 @@ private extension ExportPreflightChecker {
 
     static func collaboratorNotes(for journal: SQLiteJournal, db: Database) throws -> [SQLiteCollaboratorNote] {
         try SQLiteCollaboratorNote
-            .where { $0.journalID == journal.id }
+            .where { $0.journalID.eq(journal.id) }
             .fetchAll(db)
     }
 
@@ -189,4 +189,3 @@ private extension ExportPreflightChecker {
         try db.execute(sql: sql, arguments: args)
     }
 }
-

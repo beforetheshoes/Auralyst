@@ -3,94 +3,81 @@ import SwiftUI
 import ComposableArchitecture
 
 struct MedicationEditorView: View {
-    let store: StoreOf<MedicationEditorFeature>
+    @Bindable var store: StoreOf<MedicationEditorFeature>
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        WithViewStore(store, observe: { $0 }) { viewStore in
-            NavigationStack {
-                Form {
-                    medicationDetailsSection(viewStore: viewStore)
+        NavigationStack {
+            Form {
+                medicationDetailsSection()
 
-                    if !viewStore.isAsNeeded {
-                        scheduleSection(viewStore: viewStore)
-                    }
+                if !store.isAsNeeded {
+                    scheduleSection()
+                }
 
-                    if viewStore.medicationID != nil {
-                        deleteSection(viewStore: viewStore)
-                    }
+                if store.medicationID != nil {
+                    deleteSection()
                 }
             }
-            .navigationTitle(viewStore.medicationID == nil ? "Add Medication" : "Edit Medication")
-            .inlineNavigationTitleDisplay()
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { viewStore.send(.saveTapped) }
-                        .disabled(viewStore.name.isEmpty || viewStore.isSaving)
-                }
+        }
+        .navigationTitle(store.medicationID == nil ? "Add Medication" : "Edit Medication")
+        .inlineNavigationTitleDisplay()
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
             }
-            .task { viewStore.send(.task) }
-            .confirmationDialog(
-                "Delete Medication?",
-                isPresented: viewStore.binding(
-                    get: \.showDeleteConfirmation,
-                    send: { .binding(.set(\.showDeleteConfirmation, $0)) }
-                ),
-                titleVisibility: .visible
-            ) {
-                Button("Delete", role: .destructive) { viewStore.send(.deleteConfirmed) }
-                Button("Cancel", role: .cancel) { viewStore.send(.binding(.set(\.showDeleteConfirmation, false))) }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save") { store.send(.saveTapped) }
+                    .disabled(store.name.isEmpty || store.isSaving)
             }
-            .alert(
-                "Unable to Save",
-                isPresented: viewStore.binding(
-                    get: { $0.errorMessage != nil },
-                    send: { _ in .clearError }
-                )
-            ) {
-                Button("OK") { viewStore.send(.clearError) }
-            } message: {
-                Text(viewStore.errorMessage ?? "")
-            }
-            .onChange(of: viewStore.didFinish) { _, finished in
-                guard finished else { return }
-                viewStore.send(.clearDidFinish)
-                dismiss()
-            }
+        }
+        .task { store.send(.task) }
+        .confirmationDialog(
+            "Delete Medication?",
+            isPresented: $store.showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) { store.send(.deleteConfirmed) }
+            Button("Cancel", role: .cancel) { store.send(.binding(.set(\.showDeleteConfirmation, false))) }
+        }
+        .alert(
+            "Unable to Save",
+            isPresented: Binding(get: { store.errorMessage != nil }, set: { _ in store.send(.clearError) })
+        ) {
+            Button("OK") { store.send(.clearError) }
+        } message: {
+            Text(store.errorMessage ?? "")
+        }
+        .onChange(of: store.didFinish) { _, finished in
+            guard finished else { return }
+            store.send(.clearDidFinish)
+            dismiss()
         }
     }
 
-    private func medicationDetailsSection(viewStore: ViewStore<MedicationEditorFeature.State, MedicationEditorFeature.Action>) -> some View {
+    private func medicationDetailsSection() -> some View {
         Section("Medication Details") {
-            TextField("Name", text: viewStore.binding(get: \.name, send: { .binding(.set(\.name, $0)) }))
-            Toggle("As Needed", isOn: viewStore.binding(get: \.isAsNeeded, send: { .binding(.set(\.isAsNeeded, $0)) }))
+            TextField("Name", text: $store.name)
+            Toggle("As Needed", isOn: $store.isAsNeeded)
                 .toggleStyle(.switch)
-            TextField("Default Amount", text: viewStore.binding(get: \.defaultAmount, send: { .binding(.set(\.defaultAmount, $0)) }))
+            TextField("Default Amount", text: $store.defaultAmount)
                 .decimalPadKeyboard()
-            TextField("Unit (e.g., mg, ml)", text: viewStore.binding(get: \.defaultUnit, send: { .binding(.set(\.defaultUnit, $0)) }))
-            TextField("Use Case (e.g., pain, sleep)", text: viewStore.binding(get: \.useCase, send: { .binding(.set(\.useCase, $0)) }))
-            TextField("Notes", text: viewStore.binding(get: \.notes, send: { .binding(.set(\.notes, $0)) }), axis: .vertical)
+            TextField("Unit (e.g., mg, ml)", text: $store.defaultUnit)
+            TextField("Use Case (e.g., pain, sleep)", text: $store.useCase)
+            TextField("Notes", text: $store.notes, axis: .vertical)
                 .lineLimit(2...4)
         }
     }
 
-    private func scheduleSection(viewStore: ViewStore<MedicationEditorFeature.State, MedicationEditorFeature.Action>) -> some View {
+    private func scheduleSection() -> some View {
         Section("Schedule") {
-            if viewStore.scheduleDrafts.isEmpty {
+            if store.scheduleDrafts.isEmpty {
                 Text("Add one or more daily doses with time and amount.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            ForEach(
-                viewStore.binding(
-                    get: \.scheduleDrafts,
-                    send: { .binding(.set(\.scheduleDrafts, $0)) }
-                )
-            ) { $draft in
+            ForEach($store.scheduleDrafts) { $draft in
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         labelField($draft.label)
@@ -98,7 +85,7 @@ struct MedicationEditorView: View {
                         Spacer()
 
                         Button(role: .destructive) {
-                            viewStore.send(.removeDose(draft.id))
+                            store.send(.removeDose(draft.id))
                         } label: {
                             Image(systemName: "trash")
                         }
@@ -119,16 +106,17 @@ struct MedicationEditorView: View {
                 .padding(.vertical, 4)
             }
 
-            Button(action: { viewStore.send(.addDoseTapped) }) {
-                Label("Add Dose", systemImage: "plus")
-            }
+            Button(
+                action: { store.send(.addDoseTapped) },
+                label: { Label("Add Dose", systemImage: "plus") }
+            )
         }
     }
 
-    private func deleteSection(viewStore: ViewStore<MedicationEditorFeature.State, MedicationEditorFeature.Action>) -> some View {
+    private func deleteSection() -> some View {
         Section {
             Button(role: .destructive) {
-                viewStore.send(.deleteTapped)
+                store.send(.deleteTapped)
             } label: {
                 Text("Delete Medication")
                     .frame(maxWidth: .infinity, alignment: .center)

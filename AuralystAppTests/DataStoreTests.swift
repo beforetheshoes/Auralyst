@@ -28,6 +28,41 @@ struct DataStoreSuite {
     }
 
     @MainActor
+    @Test("Creating a symptom entry recreates missing journal metadata")
+    func createSymptomEntryRestoresJournalMetadata() throws {
+        try prepareTestDependencies()
+
+        @Dependency(\.defaultDatabase) var database
+        let store = DataStore()
+        let journal = store.createJournal()
+
+        try database.write { db in
+            try db.execute(
+                sql: "DELETE FROM sqlitedata_icloud_metadata WHERE recordPrimaryKey = ? AND recordType = ?",
+                arguments: [journal.id.uuidString, SQLiteJournal.tableName]
+            )
+        }
+
+        _ = try store.createSymptomEntry(for: journal, severity: 1)
+
+        let hasMetadata = try database.read { db in
+            try Bool.fetchOne(
+                db,
+                sql: """
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM sqlitedata_icloud_metadata
+                    WHERE recordPrimaryKey = ? AND recordType = ?
+                )
+                """,
+                arguments: [journal.id.uuidString, SQLiteJournal.tableName]
+            ) ?? false
+        }
+
+        #expect(hasMetadata)
+    }
+
+    @MainActor
     @Test("Updating a scheduled intake preserves its linkage metadata")
     func updateMedicationIntakePreservesScheduleLinkage() throws {
         try prepareTestDependencies()
@@ -204,7 +239,7 @@ struct DataStoreSuite {
                     entry.id.uuidString,
                     note.authorName,
                     note.text,
-                    timestampString,
+                    timestampString
                 ]
             )
         }

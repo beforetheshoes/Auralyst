@@ -12,94 +12,92 @@ struct ExportView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        WithViewStore(store, observe: { $0 }) { viewStore in
-            NavigationStack {
-                VStack(spacing: 20) {
-                    Text("Export Data")
-                        .font(.largeTitle)
-                        .bold()
+        NavigationStack {
+            VStack(spacing: 20) {
+                Text("Export Data")
+                    .font(.largeTitle)
+                    .bold()
 
-                    Text("Generate a CSV or JSON snapshot of this journal. Files are saved to a temporary location and shared via the system share sheet.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                Text("Generate a CSV or JSON snapshot of this journal. Files are saved to a temporary location and shared via the system share sheet.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                Button("CSV Export") {
+                    store.send(.exportTapped(.csv))
+                }
+                .disabled(store.isGenerating)
+                .buttonStyle(.borderedProminent)
+
+                Button("JSON Export") {
+                    store.send(.exportTapped(.json))
+                }
+                .disabled(store.isGenerating)
+                .buttonStyle(.bordered)
+
+                if store.isGenerating {
+                    ProgressView(store.isAutoFixing ? "Fixing data issues…" : "Preparing export…")
+                        .progressViewStyle(.circular)
+                }
+
+                if let exportError = store.errorMessage {
+                    Text(exportError)
+                        .foregroundStyle(.red)
+                        .font(.footnote)
                         .multilineTextAlignment(.center)
-
-                    Button("CSV Export") {
-                        viewStore.send(.exportTapped(.csv))
-                    }
-                    .disabled(viewStore.isGenerating)
-                    .buttonStyle(.borderedProminent)
-
-                    Button("JSON Export") {
-                        viewStore.send(.exportTapped(.json))
-                    }
-                    .disabled(viewStore.isGenerating)
-                    .buttonStyle(.bordered)
-
-                    if viewStore.isGenerating {
-                        ProgressView(viewStore.isAutoFixing ? "Fixing data issues…" : "Preparing export…")
-                            .progressViewStyle(.circular)
-                    }
-
-                    if let exportError = viewStore.errorMessage {
-                        Text(exportError)
-                            .foregroundStyle(.red)
-                            .font(.footnote)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                    }
+                        .padding(.horizontal)
                 }
-                .padding()
-                .navigationTitle("Export")
-                .inlineNavigationTitleDisplay()
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Done") { dismiss() }
-                    }
+            }
+            .padding()
+            .navigationTitle("Export")
+            .inlineNavigationTitleDisplay()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
                 }
+            }
 #if canImport(UIKit)
-                .sheet(
-                    isPresented: viewStore.binding(
-                        get: \.isShowingDocumentPicker,
-                        send: { _ in .documentPickerDismissed }
-                    )
-                ) {
-                    if let url = viewStore.exportedFileURL {
-                        DocumentExporter(url: url, onFinish: { viewStore.send(.documentPickerDismissed) })
-                    } else {
-                        EmptyView()
-                    }
+            .sheet(
+                isPresented: Binding(
+                    get: { store.isShowingDocumentPicker },
+                    set: { _ in store.send(.documentPickerDismissed) }
+                )
+            ) {
+                if let url = store.exportedFileURL {
+                    DocumentExporter(url: url, onFinish: { store.send(.documentPickerDismissed) })
+                } else {
+                    EmptyView()
                 }
+            }
 #endif
-                .confirmationDialog(
-                    "Data Health Issues Found",
-                    isPresented: viewStore.binding(
-                        get: \.isShowingPreflightDialog,
-                        send: { _ in .preflightCancelTapped }
-                    ),
-                    presenting: viewStore.preflightReport
-                ) { _ in
-                    Button("Fix Automatically and Export") {
-                        viewStore.send(.preflightAutoFixTapped)
-                    }
-                    Button("Cancel", role: .cancel) {
-                        viewStore.send(.preflightCancelTapped)
-                    }
-                } message: { report in
-                    Text(preflightMessage(report))
+            .confirmationDialog(
+                "Data Health Issues Found",
+                isPresented: Binding(
+                    get: { store.isShowingPreflightDialog },
+                    set: { _ in store.send(.preflightCancelTapped) }
+                ),
+                presenting: store.preflightReport
+            ) { _ in
+                Button("Fix Automatically and Export") {
+                    store.send(.preflightAutoFixTapped)
                 }
-                .alert(
-                    "Export Saved",
-                    isPresented: viewStore.binding(
-                        get: { $0.savedDestinationURL != nil },
-                        send: { _ in .clearSavedDestination }
-                    ),
-                    presenting: viewStore.savedDestinationURL
-                ) { destination in
-                    Button("OK") { viewStore.send(.clearSavedDestination) }
-                } message: { destination in
-                    Text(destination.path)
+                Button("Cancel", role: .cancel) {
+                    store.send(.preflightCancelTapped)
                 }
+            } message: { report in
+                Text(preflightMessage(report))
+            }
+            .alert(
+                "Export Saved",
+                isPresented: Binding(
+                    get: { store.savedDestinationURL != nil },
+                    set: { _ in store.send(.clearSavedDestination) }
+                ),
+                presenting: store.savedDestinationURL
+            ) { _ in
+                Button("OK") { store.send(.clearSavedDestination) }
+            } message: { _ in
+                Text(store.savedDestinationURL?.path ?? "")
             }
         }
     }

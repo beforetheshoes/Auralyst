@@ -8,127 +8,136 @@ struct ImportView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        WithViewStore(store, observe: { $0 }) { viewStore in
-            NavigationStack {
-                VStack(spacing: 20) {
-                    Text("Import Data")
-                        .font(.largeTitle)
-                        .bold()
+        NavigationStack {
+            VStack(spacing: 20) {
+                Text("Import Data")
+                    .font(.largeTitle)
+                    .bold()
 
-                    Text("Import a previously exported JSON or CSV journal file. Importing will replace any existing data.")
-                        .font(.callout)
+                Text("Import a previously exported JSON or CSV journal file. Importing will replace any existing data.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                Button("Choose File") {
+                    store.send(.chooseFileTapped)
+                }
+                .buttonStyle(.bordered)
+
+                if let url = store.selectedFileURL {
+                    Text(url.lastPathComponent)
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
+                }
+
+                Button("Import Journal") {
+                    store.send(.importTapped)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(store.selectedFileURL == nil || store.isImporting || store.isAnalyzing)
+
+                if store.isAnalyzing || store.isImporting {
+                    ProgressView(store.isAnalyzing ? "Checking data…" : "Importing…")
+                        .progressViewStyle(.circular)
+                }
+
+                if let error = store.errorMessage {
+                    Text(error)
+                        .foregroundStyle(.red)
+                        .font(.footnote)
                         .multilineTextAlignment(.center)
-
-                    Button("Choose File") {
-                        viewStore.send(.chooseFileTapped)
-                    }
-                    .buttonStyle(.bordered)
-
-                    if let url = viewStore.selectedFileURL {
-                        Text(url.lastPathComponent)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Button("Import Journal") {
-                        viewStore.send(.importTapped)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(viewStore.selectedFileURL == nil || viewStore.isImporting || viewStore.isAnalyzing)
-
-                    if viewStore.isAnalyzing || viewStore.isImporting {
-                        ProgressView(viewStore.isAnalyzing ? "Checking data…" : "Importing…")
-                            .progressViewStyle(.circular)
-                    }
-
-                    if let error = viewStore.errorMessage {
-                        Text(error)
-                            .foregroundStyle(.red)
-                            .font(.footnote)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                    }
+                        .padding(.horizontal)
                 }
-                .padding()
-                .navigationTitle("Import")
-                .inlineNavigationTitleDisplay()
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Done") { dismiss() }
-                    }
+            }
+            .padding()
+            .navigationTitle("Import")
+            .inlineNavigationTitleDisplay()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
                 }
-                .fileImporter(
-                    isPresented: viewStore.binding(
-                        get: \.showFilePicker,
-                        send: { _ in .filePickerDismissed }
-                    ),
-                    allowedContentTypes: [UTType.json, UTType.commaSeparatedText],
-                    allowsMultipleSelection: false
-                ) { result in
-                    switch result {
-                    case .success(let urls):
-                        if let url = urls.first {
-                            viewStore.send(.filePicked(url))
-                        }
-                    case .failure(let error):
-                        viewStore.send(.importResponse(.failure(error)))
+            }
+            .fileImporter(
+                isPresented: Binding(
+                    get: { store.showFilePicker },
+                    set: { _ in store.send(.filePickerDismissed) }
+                ),
+                allowedContentTypes: [UTType.json, UTType.commaSeparatedText],
+                allowsMultipleSelection: false
+            ) { result in
+                switch result {
+                case .success(let urls):
+                    if let url = urls.first {
+                        store.send(.filePicked(url))
                     }
+                case .failure(let error):
+                    store.send(.importResponse(.failure(error)))
                 }
-                .alert(
-                    "Replace Existing Data?",
-                    isPresented: viewStore.binding(
-                        get: \.showReplaceConfirmation,
-                        send: ImportFeature.Action.setReplaceConfirmation
-                    )
-                ) {
-                    Button("Replace", role: .destructive) {
-                        viewStore.send(.confirmReplaceTapped)
-                    }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text("Importing will delete your current journal data and replace it with the selected file.")
+            }
+            .alert(
+                "Replace Existing Data?",
+                isPresented: Binding(
+                    get: { store.showReplaceConfirmation },
+                    set: { store.send(.setReplaceConfirmation($0)) }
+                )
+            ) {
+                Button("Replace", role: .destructive) {
+                    store.send(.confirmReplaceTapped)
                 }
-                .alert(
-                    "Import Complete",
-                    isPresented: viewStore.binding(
-                        get: { $0.lastResult != nil },
-                        send: { _ in .clearResult }
-                    ),
-                    presenting: viewStore.lastResult
-                ) { _ in
-                    Button("OK") {
-                        viewStore.send(.clearResult)
-                        dismiss()
-                    }
-                } message: { result in
-                    Text(
-                        "Imported \(result.summary.importedEntries) entries, \(result.summary.importedMedications) medications, \(result.summary.importedSchedules) schedules, \(result.summary.importedIntakes) intakes, and \(result.summary.importedCollaboratorNotes) notes."
-                    )
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Importing will delete your current journal data and replace it with the selected file.")
+            }
+            .alert(
+                "Import Complete",
+                isPresented: Binding(
+                    get: { store.lastResult != nil },
+                    set: { _ in store.send(.clearResult) }
+                ),
+                presenting: store.lastResult
+            ) { _ in
+                Button("OK") {
+                    store.send(.clearResult)
+                    dismiss()
                 }
-                .confirmationDialog(
-                    "Import Issues Found",
-                    isPresented: viewStore.binding(
-                        get: \.showIssuesDialog,
-                        send: { _ in .dismissIssuesDialog }
-                    ),
-                    presenting: viewStore.analysis
-                ) { _ in
-                    Button("Fix Automatically and Import") {
-                        viewStore.send(.importWithAutoFixTapped)
-                    }
-                    Button("Cancel", role: .cancel) {
-                        viewStore.send(.dismissIssuesDialog)
-                    }
-                } message: { analysis in
-                    Text(issuesMessage(analysis))
+            } message: { result in
+                Text(
+                    importSummaryMessage(result.summary)
+                )
+            }
+            .confirmationDialog(
+                "Import Issues Found",
+                isPresented: Binding(
+                    get: { store.showIssuesDialog },
+                    set: { _ in store.send(.dismissIssuesDialog) }
+                ),
+                presenting: store.analysis
+            ) { _ in
+                Button("Fix Automatically and Import") {
+                    store.send(.importWithAutoFixTapped)
                 }
+                Button("Cancel", role: .cancel) {
+                    store.send(.dismissIssuesDialog)
+                }
+            } message: { analysis in
+                Text(issuesMessage(analysis))
             }
         }
     }
 }
 
 private extension ImportView {
+    func importSummaryMessage(_ summary: ImportSummary) -> String {
+        let parts = [
+            "\(summary.importedEntries) entries",
+            "\(summary.importedMedications) medications",
+            "\(summary.importedSchedules) schedules",
+            "\(summary.importedIntakes) intakes",
+            "\(summary.importedCollaboratorNotes) notes"
+        ]
+        return "Imported \(parts.joined(separator: ", "))."
+    }
+
     func issuesMessage(_ analysis: ImportAnalysis) -> String {
         let lines = analysis.fixableIssues.map { issue in
             switch issue.kind {

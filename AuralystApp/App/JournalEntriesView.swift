@@ -57,14 +57,14 @@ struct JournalEntriesView: View {
         )
 
         // Filter entries and medications for this journal
-        self._entries = FetchAll(SQLiteSymptomEntry.where { $0.journalID == journal.id })
-        self._medications = FetchAll(SQLiteMedication.where { $0.journalID == journal.id })
+        self._entries = FetchAll(SQLiteSymptomEntry.where { $0.journalID.eq(journal.id) })
+        self._medications = FetchAll(SQLiteMedication.where { $0.journalID.eq(journal.id) })
         self._medicationIntakes = FetchAll(
             SQLiteMedicationIntake.where {
                 $0.medicationID.in(
                     SQLiteMedication
                         .select { $0.id }
-                        .where { $0.journalID == journal.id }
+                        .where { $0.journalID.eq(journal.id) }
                 )
             }
         )
@@ -131,30 +131,32 @@ struct JournalEntriesView: View {
                 }
             }
         }
-        .sheet(item: $activeSheet, onDismiss: {
-            activeSheet = nil
-        }) { sheet in
-            switch sheet {
-            case .medicationManager:
-                MedicationsView(
-                    journal: journal,
-                    store: Store(initialState: MedicationsFeature.State(journal: journal)) {
-                        MedicationsFeature()
-                    }
-                )
-            case .asNeeded(let presentation):
-                AsNeededIntakeView(
-                    store: Store(
-                        initialState: AsNeededIntakeFeature.State(
-                            medication: presentation.medication,
-                            defaultDate: presentation.selectedDate
-                        )
-                    ) {
-                        AsNeededIntakeFeature()
-                    }
-                )
+        .sheet(
+            item: $activeSheet,
+            onDismiss: { activeSheet = nil },
+            content: { sheet in
+                switch sheet {
+                case .medicationManager:
+                    MedicationsView(
+                        journal: journal,
+                        store: Store(initialState: MedicationsFeature.State(journal: journal)) {
+                            MedicationsFeature()
+                        }
+                    )
+                case .asNeeded(let presentation):
+                    AsNeededIntakeView(
+                        store: Store(
+                            initialState: AsNeededIntakeFeature.State(
+                                medication: presentation.medication,
+                                defaultDate: presentation.selectedDate
+                            )
+                        ) {
+                            AsNeededIntakeFeature()
+                        }
+                    )
+                }
             }
-        }
+        )
     }
 
     // MARK: - Grouping Helpers
@@ -213,9 +215,12 @@ private struct DaySummaryRow: View {
 
     private var previewLine: String? {
         var parts: [String] = []
-        if let e = entries.first {
-            if let note = e.note, !note.isEmpty { parts.append(note) }
-            else { parts.append("Severity: \(e.severity)") }
+        if let entry = entries.first {
+            if let note = entry.note, !note.isEmpty {
+                parts.append(note)
+            } else {
+                parts.append("Severity: \(entry.severity)")
+            }
         }
         if !intakes.isEmpty {
             let names: [String] = intakes.prefix(3).compactMap { medicationsByID[$0.medicationID]?.name }

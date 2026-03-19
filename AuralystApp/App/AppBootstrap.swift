@@ -22,7 +22,11 @@ struct AppBootstrap {
 
     static func initializeEnvironment(isRunningTests: Bool) {
         prepareDependencies {
-            try! $0.bootstrapDatabase(configureSyncEngine: !isRunningTests)
+            do {
+                try $0.bootstrapDatabase(configureSyncEngine: !isRunningTests)
+            } catch {
+                fatalError("Failed to bootstrap database: \(error)")
+            }
             resetForUITests(using: &$0)
             seedAutomationFixtures(using: &$0)
         }
@@ -85,7 +89,7 @@ private extension AppBootstrap {
                 }
 
                 let medications = try SQLiteMedication
-                    .where { $0.journalID == journal.id }
+                    .where { $0.journalID.eq(journal.id) }
                     .fetchAll(db)
                 let existingAsNeededNames = Set(
                     medications
@@ -127,7 +131,7 @@ private extension AppBootstrap {
                 }
 
                 let medications = try SQLiteMedication
-                    .where { $0.journalID == journal.id }
+                    .where { $0.journalID.eq(journal.id) }
                     .fetchAll(db)
                 let existingNames = Set(medications.map(\.name))
 
@@ -163,7 +167,7 @@ private extension AppBootstrap {
 
                 if let scheduledMedication {
                     let existingSchedules = try SQLiteMedicationSchedule
-                        .where { $0.medicationID == scheduledMedication.id }
+                        .where { $0.medicationID.eq(scheduledMedication.id) }
                         .fetchAll(db)
                     if existingSchedules.isEmpty {
                         let schedule = SQLiteMedicationSchedule(

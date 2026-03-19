@@ -312,7 +312,7 @@ struct DataExporterSuite {
                 arguments: [
                     invalidScheduleID.uuidString,
                     invalidEntryID.uuidString,
-                    intake.id.uuidString,
+                    intake.id.uuidString
                 ]
             )
             try db.execute(
@@ -354,6 +354,11 @@ struct DataExporterSuite {
         #expect(refs.2 == nil)
     }
 
+}
+
+// MARK: - Sanitization & Round Trip Tests
+
+extension DataExporterSuite {
     @MainActor
     @Test("Exporter sanitizes invalid references in payloads")
     func exporterSanitizesInvalidReferences() throws {
@@ -406,7 +411,7 @@ struct DataExporterSuite {
                 arguments: [
                     invalidScheduleID.uuidString,
                     invalidEntryID.uuidString,
-                    intake.id.uuidString,
+                    intake.id.uuidString
                 ]
             )
             try db.execute(
@@ -481,7 +486,7 @@ struct DataExporterSuite {
                 arguments: [
                     invalidScheduleID.uuidString,
                     invalidEntryID.uuidString,
-                    intake.id.uuidString,
+                    intake.id.uuidString
                 ]
             )
             try db.execute(

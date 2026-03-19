@@ -68,6 +68,7 @@ private enum DatabaseClientKey: DependencyKey {
                 }
             },
             createSymptomEntry: { journal, severity, note, timestamp, isMenstruating in
+                ensureJournalCloudMetadata(journalID: journal.id, database: database, logger: logger)
                 let entry = SQLiteSymptomEntry(
                     timestamp: timestamp,
                     journalID: journal.id,
@@ -100,7 +101,7 @@ private enum DatabaseClientKey: DependencyKey {
                 do {
                     let entries = try database.read { db in
                         try SQLiteSymptomEntry
-                            .where { $0.journalID == journal.id }
+                            .where { $0.journalID.eq(journal.id) }
                             .order { $0.timestamp.desc() }
                             .fetchAll(db)
                     }
@@ -143,6 +144,7 @@ private enum DatabaseClientKey: DependencyKey {
                 }
             },
             createCollaboratorNote: { journal, entry, authorName, text in
+                ensureJournalCloudMetadata(journalID: journal.id, database: database, logger: logger)
                 let note = SQLiteCollaboratorNote(
                     journalID: journal.id,
                     entryID: entry?.id,
@@ -164,11 +166,11 @@ private enum DatabaseClientKey: DependencyKey {
                 do {
                     try database.write { db in
                         try SQLiteMedicationSchedule
-                            .where { $0.medicationID == medicationID }
+                            .where { $0.medicationID.eq(medicationID) }
                             .delete()
                             .execute(db)
                         try SQLiteMedicationIntake
-                            .where { $0.medicationID == medicationID }
+                            .where { $0.medicationID.eq(medicationID) }
                             .delete()
                             .execute(db)
                         try SQLiteMedication.find(medicationID).delete().execute(db)
@@ -180,6 +182,7 @@ private enum DatabaseClientKey: DependencyKey {
                 }
             },
             createMedication: { journal, name, defaultAmount, defaultUnit in
+                ensureJournalCloudMetadata(journalID: journal.id, database: database, logger: logger)
                 let medication = SQLiteMedication(
                     journalID: journal.id,
                     name: name,
@@ -201,7 +204,7 @@ private enum DatabaseClientKey: DependencyKey {
                 do {
                     let meds = try database.read { db in
                         try SQLiteMedication
-                            .where { $0.journalID == journal.id }
+                            .where { $0.journalID.eq(journal.id) }
                             .order { $0.name.asc() }
                             .fetchAll(db)
                     }
@@ -213,6 +216,7 @@ private enum DatabaseClientKey: DependencyKey {
                 }
             },
             createMedicationIntake: { medication, amount, unit in
+                ensureJournalCloudMetadata(journalID: medication.journalID, database: database, logger: logger)
                 let intake = SQLiteMedicationIntake(
                     medicationID: medication.id,
                     amount: amount,
@@ -322,5 +326,81 @@ extension DependencyValues {
     var databaseClient: DatabaseClient {
         get { self[DatabaseClientKey.self] }
         set { self[DatabaseClientKey.self] = newValue }
+    }
+}
+
+private func ensureJournalCloudMetadata(
+    journalID: UUID,
+    database: any DatabaseWriter,
+    logger: Logger
+) {
+    do {
+        let metadataTableExists = try database.read { db in
+            try String.fetchOne(
+                db,
+                sql: "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sqlitedata_icloud_metadata'"
+            ) != nil
+        }
+        guard metadataTableExists else { return }
+
+        let metadataRow = try database.read { db in
+            try Row.fetchOne(
+                db,
+                sql: """
+                SELECT hasLastKnownServerRecord, lastKnownServerRecord, _isDeleted
+                FROM sqlitedata_icloud_metadata
+                WHERE recordPrimaryKey = ? AND recordType = ?
+                LIMIT 1
+                """,
+                arguments: [journalID.uuidString, SQLiteJournal.tableName]
+            )
+        }
+
+        var shouldResetMetadata = false
+        if let metadataRow {
+            let hasLastKnownServerRecord = (metadataRow["hasLastKnownServerRecord"] as? Int) ?? 0
+            let lastKnownServerRecord = metadataRow["lastKnownServerRecord"] as? Data
+            let isDeleted = (metadataRow["_isDeleted"] as? Int) ?? 0
+            let isShared = (metadataRow["isShared"] as? Int) ?? 0
+            let share = metadataRow["share"] as? Data
+            let recordSize = lastKnownServerRecord?.count ?? 0
+            let shareSize = share?.count ?? 0
+
+            print(
+                "Journal metadata status id=\(journalID)"
+                + " hasLastKnownServerRecord=\(hasLastKnownServerRecord)"
+                + " recordSize=\(recordSize) isDeleted=\(isDeleted)"
+                + " isShared=\(isShared) shareSize=\(shareSize)"
+            )
+
+            if isDeleted == 1 || (hasLastKnownServerRecord == 1 && lastKnownServerRecord == nil) {
+                shouldResetMetadata = true
+            } else if hasLastKnownServerRecord == 1 {
+                return
+            }
+        }
+
+        if shouldResetMetadata {
+            try database.write { db in
+                try db.execute(
+                    sql: """
+                    DELETE FROM sqlitedata_icloud_metadata
+                    WHERE recordPrimaryKey = ? AND recordType = ?
+                    """,
+                    arguments: [journalID.uuidString, SQLiteJournal.tableName]
+                )
+            }
+            logger.info("Reset CloudKit metadata for journal: \(journalID)")
+        }
+
+        try database.write { db in
+            try db.execute(
+                sql: "UPDATE sqLiteJournal SET createdAt = createdAt WHERE id = ?",
+                arguments: [journalID.uuidString]
+            )
+        }
+        logger.info("Ensured CloudKit metadata for journal: \(journalID)")
+    } catch {
+        logger.error("Error ensuring CloudKit metadata for journal \(journalID): \(error.localizedDescription)")
     }
 }
