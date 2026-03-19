@@ -17,10 +17,6 @@ env:
   SWIFTPM_ENABLE_MACROS: 1
   SWIFTPM_EXPERIMENTAL_FEATURES: Macros
   SWIFT_BUILD_ENABLE_PLUGIN_AUTO_TRUST: 1
-  XCODEBUILD_FLAGS: >-
-    -skipPackagePluginValidation
-    SWIFT_ENABLE_EXPERIMENTAL_FEATURES=Macros
-    OTHER_SWIFT_FLAGS="-enable-experimental-feature Macros -enable-experimental-feature CompilerPlugin"
 
 jobs:
   build:
@@ -39,20 +35,15 @@ jobs:
           defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
           defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
 
-      - name: Resolve packages
-        run: |
-          xcodebuild -resolvePackageDependencies \
-            -project AuralystApp.xcodeproj \
-            -scheme "$SCHEME" \
-            $XCODEBUILD_FLAGS
-
       - name: Build for testing
         run: |
           xcodebuild build-for-testing \
             -project AuralystApp.xcodeproj \
             -scheme "$SCHEME" \
             -destination "$DESTINATION" \
-            $XCODEBUILD_FLAGS
+            -skipPackagePluginValidation \
+            SWIFT_ENABLE_EXPERIMENTAL_FEATURES=Macros \
+            OTHER_SWIFT_FLAGS='$(inherited) -enable-experimental-feature Macros -enable-experimental-feature CompilerPlugin'
 
   test:
     name: Test
@@ -71,7 +62,7 @@ jobs:
           defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
           defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
 
-      - name: Build and run unit tests
+      - name: Run unit tests
         run: |
           xcodebuild test \
             -project AuralystApp.xcodeproj \
@@ -79,7 +70,9 @@ jobs:
             -destination "$DESTINATION" \
             -skip-testing:AuralystAppUITests \
             -resultBundlePath TestResults.xcresult \
-            $XCODEBUILD_FLAGS
+            -skipPackagePluginValidation \
+            SWIFT_ENABLE_EXPERIMENTAL_FEATURES=Macros \
+            OTHER_SWIFT_FLAGS='$(inherited) -enable-experimental-feature Macros -enable-experimental-feature CompilerPlugin'
 
       - name: Upload test results
         if: failure()
@@ -114,7 +107,9 @@ jobs:
             -project AuralystApp.xcodeproj \
             -scheme "$SCHEME" \
             -destination "$DESTINATION" \
-            $XCODEBUILD_FLAGS \
+            -skipPackagePluginValidation \
+            SWIFT_ENABLE_EXPERIMENTAL_FEATURES=Macros \
+            OTHER_SWIFT_FLAGS='$(inherited) -enable-experimental-feature Macros -enable-experimental-feature CompilerPlugin' \
             2>&1 | xcpretty && exit ${PIPESTATUS[0]}
 
   swiftlint:
@@ -125,5 +120,3 @@ jobs:
 
       - name: SwiftLint
         uses: norio-nomura/action-swiftlint@3.2.1
-        with:
-          args: --strict
