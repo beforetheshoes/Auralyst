@@ -52,7 +52,6 @@ jobs:
   test:
     name: Test
     runs-on: macos-15
-    needs: build
     steps:
       - uses: actions/checkout@v4
 
