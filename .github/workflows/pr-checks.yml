@@ -1,0 +1,129 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+env:
+  SCHEME: AuralystApp
+  DESTINATION: "platform=iOS Simulator,name=iPhone 16"
+  SWIFT_ENABLE_EXPERIMENTAL_FEATURES: Macros
+  SWIFT_EXPERIMENTAL_FEATURES: Macros
+  SWIFT_FLAGS: -enable-experimental-feature Macros
+  SWIFTPM_ENABLE_MACROS: 1
+  SWIFTPM_EXPERIMENTAL_FEATURES: Macros
+  SWIFT_BUILD_ENABLE_PLUGIN_AUTO_TRUST: 1
+  XCODEBUILD_FLAGS: >-
+    -skipPackagePluginValidation
+    SWIFT_ENABLE_EXPERIMENTAL_FEATURES=Macros
+    OTHER_SWIFT_FLAGS="-enable-experimental-feature Macros -enable-experimental-feature CompilerPlugin"
+
+jobs:
+  build:
+    name: Build
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "16.2"
+
+      - name: Trust Xcode plugins
+        run: |
+          defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
+          defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
+
+      - name: Resolve packages
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project AuralystApp.xcodeproj \
+            -scheme "$SCHEME" \
+            $XCODEBUILD_FLAGS
+
+      - name: Build for testing
+        run: |
+          xcodebuild build-for-testing \
+            -project AuralystApp.xcodeproj \
+            -scheme "$SCHEME" \
+            -destination "$DESTINATION" \
+            $XCODEBUILD_FLAGS
+
+  test:
+    name: Test
+    runs-on: macos-15
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "16.2"
+
+      - name: Trust Xcode plugins
+        run: |
+          defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
+          defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
+
+      - name: Build and run unit tests
+        run: |
+          xcodebuild test \
+            -project AuralystApp.xcodeproj \
+            -scheme "$SCHEME" \
+            -destination "$DESTINATION" \
+            -skip-testing:AuralystAppUITests \
+            -resultBundlePath TestResults.xcresult \
+            $XCODEBUILD_FLAGS
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults.xcresult
+
+  analyze:
+    name: Analyze
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "16.2"
+
+      - name: Trust Xcode plugins
+        run: |
+          defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
+          defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
+
+      - name: Install xcpretty
+        run: gem install xcpretty
+
+      - name: Build and analyze
+        run: |
+          set -o pipefail
+          xcodebuild clean build analyze \
+            -project AuralystApp.xcodeproj \
+            -scheme "$SCHEME" \
+            -destination "$DESTINATION" \
+            $XCODEBUILD_FLAGS \
+            2>&1 | xcpretty && exit ${PIPESTATUS[0]}
+
+  swiftlint:
+    name: SwiftLint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: SwiftLint
+        uses: norio-nomura/action-swiftlint@3.2.1
+        with:
+          args: --strict
