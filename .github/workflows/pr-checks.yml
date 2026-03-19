@@ -41,6 +41,7 @@ jobs:
             -scheme "$SCHEME" \
             -destination "platform=macOS" \
             -skipPackagePluginValidation \
+            -skipMacroValidation \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
@@ -73,6 +74,7 @@ jobs:
             -skip-testing:AuralystAppUITests \
             -resultBundlePath TestResults.xcresult \
             -skipPackagePluginValidation \
+            -skipMacroValidation \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
@@ -113,6 +115,7 @@ jobs:
             -scheme "$SCHEME" \
             -destination "platform=macOS" \
             -skipPackagePluginValidation \
+            -skipMacroValidation \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
