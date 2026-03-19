@@ -97,7 +97,6 @@ struct SyncStatusFeature {
         case syncStallTimeout
     }
 
-
     var body: some Reducer<State, Action> {
         Reduce { state, action in
             switch action {
@@ -175,7 +174,9 @@ struct SyncStatusFeature {
                 let syncHasStalled =
                     !state.latestState.isSendingChanges &&
                     !state.latestState.isFetchingChanges
-                let syncHasTimedOut = state.syncingSince.map { now.timeIntervalSince($0) >= syncStallTimeoutDuration.timeInterval } ?? false
+                let syncHasTimedOut = state.syncingSince.map {
+                    now.timeIntervalSince($0) >= syncStallTimeoutDuration.timeInterval
+                } ?? false
 
                 if syncHasStalled || syncHasTimedOut {
                     state.status.lastSuccessfulSync = state.status.lastSuccessfulSync ?? now
@@ -279,7 +280,9 @@ private struct SyncStatusOverride {
             lastSuccessfulSync = now
         default:
             if lowercased.hasPrefix("error") {
-                let components = rawValue.split(separator: ":", maxSplits: 1).map { String($0).trimmingCharacters(in: .whitespaces) }
+                let components = rawValue
+                    .split(separator: ":", maxSplits: 1)
+                    .map { String($0).trimmingCharacters(in: .whitespaces) }
                 let message = components.count > 1 ? components[1] : "Sync unavailable"
                 phase = .error(SyncIssue(kind: .unknown, message: message, code: nil))
                 lastSuccessfulSync = nil

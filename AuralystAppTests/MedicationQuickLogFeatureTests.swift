@@ -62,7 +62,9 @@ struct MedicationQuickLogFeatureTests {
         }
 
         #expect(testStore.state.snapshot.medications.contains(where: { $0.name == "Vitamin D" }))
-        #expect(testStore.state.snapshot.schedulesByMedication[medication.id]?.contains(where: { $0.id == schedule.id }) == true)
+        let containsSchedule = testStore.state.snapshot.schedulesByMedication[medication.id]?
+            .contains(where: { $0.id == schedule.id })
+        #expect(containsSchedule == true)
 
         await testStore.send(.cancelNotifications)
     }
@@ -105,6 +107,8 @@ struct MedicationQuickLogFeatureTests {
             $0.isLoading = false
             $0.snapshot = expectedSnapshot
         }
+
+        await testStore.send(.cancelNotifications)
     }
 
     @MainActor

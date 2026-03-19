@@ -90,7 +90,7 @@ struct EntryDetailView: View {
     withPreviewDataStore {
         let databaseClient = DependencyValues._current.databaseClient
         let journal = databaseClient.createJournal()
-        let entry = try! databaseClient.createSymptomEntry(journal, 5, "Test entry", .now, false)
+        let entry = previewValue { try databaseClient.createSymptomEntry(journal, 5, "Test entry", .now, false) }
 
         EntryDetailView(entry: entry)
     }

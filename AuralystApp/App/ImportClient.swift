@@ -3,7 +3,9 @@ import Dependencies
 
 struct ImportClient {
     var analyze: @Sendable (_ url: URL) async throws -> ImportAnalysis
-    var importJournal: @Sendable (_ url: URL, _ replaceExisting: Bool, _ resolution: ImportResolution) async throws -> ImportResult
+    var importJournal: @Sendable (
+        _ url: URL, _ replaceExisting: Bool, _ resolution: ImportResolution
+    ) async throws -> ImportResult
 }
 
 private enum ImportClientKey: DependencyKey {

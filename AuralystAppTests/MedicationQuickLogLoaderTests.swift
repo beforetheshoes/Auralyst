@@ -29,7 +29,9 @@ struct MedicationQuickLogLoaderSuite {
             unit: "tablet",
             cadence: "daily",
             interval: 1,
-            daysOfWeekMask: MedicationWeekday.mask(for: MedicationWeekday.allCases),
+            daysOfWeekMask: MedicationWeekday.mask(
+                for: MedicationWeekday.allCases
+            ),
             hour: 8,
             minute: 0,
             timeZoneIdentifier: TimeZone.current.identifier,
@@ -39,9 +41,12 @@ struct MedicationQuickLogLoaderSuite {
         try insertSchedule(schedule, database: database)
 
         let loader = MedicationQuickLogLoader()
-        let snapshot = try loader.load(journalID: journal.id, on: Date())
+        let snapshot = try loader.load(
+            journalID: journal.id, on: Date()
+        )
 
-        let loadedSchedules = snapshot.schedulesByMedication[medication.id]
+        let loadedSchedules =
+            snapshot.schedulesByMedication[medication.id]
         #expect(loadedSchedules?.count == 1)
         #expect(loadedSchedules?.first?.label == "Morning")
     }
@@ -51,22 +56,33 @@ struct MedicationQuickLogLoaderSuite {
         let result = try await Task.detached {
             try withDependencies {
                 $0.context = .test
-                try $0.bootstrapDatabase(configureSyncEngine: false)
+                try $0.bootstrapDatabase(
+                    configureSyncEngine: false
+                )
+                $0.databaseClient = buildTestDatabaseClient(
+                    database: $0.defaultDatabase
+                )
             } operation: {
-                @Dependency(\.databaseClient) var databaseClient
-                let journal = databaseClient.createJournal()
-                let medication = databaseClient.createMedication(journal, "Melatonin", 3, "mg")
+                @Dependency(\.databaseClient) var client
+                let journal = client.createJournal()
+                let medication = client.createMedication(
+                    journal, "Melatonin", 3, "mg"
+                )
                 let loader = MedicationQuickLogLoader()
-                let snapshot = try loader.load(journalID: journal.id, on: Date())
+                let snapshot = try loader.load(
+                    journalID: journal.id, on: Date()
+                )
                 return (snapshot, medication.id)
             }
         }.value
 
-        #expect(result.0.medications.contains(where: { $0.id == result.1 }))
+        #expect(result.0.medications.contains(where: {
+            $0.id == result.1
+        }))
     }
 
     @MainActor
-    @Test("Loads medications even if the journal row is missing")
+    @Test("Loads medications even if journal row is missing")
     func loaderDoesNotRequireJournalRow() throws {
         try prepareTestDependencies()
 
@@ -83,32 +99,43 @@ struct MedicationQuickLogLoaderSuite {
         let now = Date()
 
         try database.write { db in
-            // Simulate a reset that removes the journal but leaves medications behind.
             try db.execute(sql: "PRAGMA foreign_keys = OFF")
             try db.execute(
-                sql: "DELETE FROM sqLiteJournal WHERE id = ?",
+                sql: """
+                    DELETE FROM sqLiteJournal
+                    WHERE id = ?
+                    """,
                 arguments: [journal.id.uuidString]
             )
             try db.execute(sql: "PRAGMA foreign_keys = ON")
         }
 
         let loader = MedicationQuickLogLoader()
-        let snapshot = try loader.load(journalID: journal.id, on: now)
+        let snapshot = try loader.load(
+            journalID: journal.id, on: now
+        )
 
-        #expect(snapshot.medications.contains(where: { $0.id == medication.id }))
+        #expect(snapshot.medications.contains(where: {
+            $0.id == medication.id
+        }))
     }
 
     @MainActor
-    @Test("Returns an empty snapshot for an unknown journal ID")
+    @Test("Returns empty snapshot for unknown journal ID")
     func loaderReturnsEmptyForUnknownJournal() throws {
         try prepareTestDependencies()
 
         let store = DataStore()
         let journal = store.createJournal()
-        _ = store.createMedication(for: journal, name: "Known Med", defaultAmount: 1, defaultUnit: "pill")
+        _ = store.createMedication(
+            for: journal, name: "Known Med",
+            defaultAmount: 1, defaultUnit: "pill"
+        )
 
         let loader = MedicationQuickLogLoader()
-        let snapshot = try loader.load(journalID: UUID(), on: Date())
+        let snapshot = try loader.load(
+            journalID: UUID(), on: Date()
+        )
 
         #expect(snapshot.medications.isEmpty)
         #expect(snapshot.schedulesByMedication.isEmpty)
@@ -116,75 +143,48 @@ struct MedicationQuickLogLoaderSuite {
     }
 
     @MainActor
-    @Test("Maps taken intakes by schedule ID and medication ID")
-    func loaderMapsTakenIntakesForScheduledAndAsNeeded() throws {
+    @Test("Maps taken intakes by schedule and medication ID")
+    func loaderMapsTakenIntakes() throws {
         try prepareTestDependencies()
 
         @Dependency(\.defaultDatabase) var database
-        let store = DataStore()
-        let journal = store.createJournal()
-
-        let scheduledMedication = store.createMedication(
-            for: journal,
-            name: "Scheduled Med",
-            defaultAmount: 1,
-            defaultUnit: "pill"
-        )
-        let asNeededMedication = store.createMedication(
-            for: journal,
-            name: "As Needed Med",
-            defaultAmount: 2,
-            defaultUnit: "pill"
+        let fx = try createTakenIntakesFixture(
+            database: database
         )
 
-        let schedule = SQLiteMedicationSchedule(
-            medicationID: scheduledMedication.id,
-            label: "Morning",
-            amount: 1,
-            unit: "pill",
-            cadence: "daily",
-            interval: 1,
-            daysOfWeekMask: MedicationWeekday.mask(for: MedicationWeekday.allCases),
-            hour: 8,
-            minute: 0,
-            isActive: true,
-            sortOrder: 0
+        let baseDate = Date(
+            timeIntervalSince1970: 1_726_601_200
         )
-        try insertSchedule(schedule, database: database)
+        let dayStart = Calendar.current.startOfDay(
+            for: baseDate
+        )
 
-        let baseDate = Date(timeIntervalSince1970: 1_726_601_200)
-        let dayStart = Calendar.current.startOfDay(for: baseDate)
-        let scheduledTimestamp = dayStart.addingTimeInterval(8 * 60 * 60)
-        let asNeededTimestamp = dayStart.addingTimeInterval(10 * 60 * 60)
-
-        let scheduledIntake = SQLiteMedicationIntake(
-            medicationID: scheduledMedication.id,
-            scheduleID: schedule.id,
-            amount: 1,
-            unit: "pill",
-            timestamp: scheduledTimestamp,
-            origin: "scheduled"
+        try insertTakenIntakes(
+            database: database,
+            scheduledMed: fx.scheduledMed,
+            asNeededMed: fx.asNeededMed,
+            schedule: fx.schedule,
+            dayStart: dayStart
         )
-        let asNeededIntake = SQLiteMedicationIntake(
-            medicationID: asNeededMedication.id,
-            amount: 2,
-            unit: "pill",
-            timestamp: asNeededTimestamp,
-            origin: "asNeeded"
-        )
-        try insertIntake(scheduledIntake, database: database)
-        try insertIntake(asNeededIntake, database: database)
 
         let loader = MedicationQuickLogLoader()
-        let snapshot = try loader.load(journalID: journal.id, on: baseDate)
+        let snapshot = try loader.load(
+            journalID: fx.journal.id, on: baseDate
+        )
 
-        #expect(snapshot.takenByScheduleID[schedule.id]?.medicationID == scheduledMedication.id)
-        #expect(snapshot.takenByScheduleID[asNeededMedication.id]?.medicationID == asNeededMedication.id)
+        #expect(
+            snapshot.takenByScheduleID[fx.schedule.id]?
+                .medicationID == fx.scheduledMed.id
+        )
+        #expect(
+            snapshot.takenByScheduleID[fx.asNeededMed.id]?
+                .medicationID == fx.asNeededMed.id
+        )
     }
 
     @MainActor
-    @Test("Schedule persistence drops missing schedule references")
-    func schedulePersistenceDropsMissingScheduleReferences() throws {
+    @Test("Schedule persistence drops missing schedule refs")
+    func schedulePersistenceDropsMissingRefs() throws {
         try prepareTestDependencies()
 
         let store = DataStore()
@@ -197,16 +197,19 @@ struct MedicationQuickLogLoaderSuite {
         )
 
         @Dependency(\.defaultDatabase) var database
-        let persistedScheduleID = try database.read { db in
-            try MedicationQuickLogSection.scheduleIDToPersist(scheduleID: medication.id, db: db)
+        let persistedID = try database.read { db in
+            try MedicationQuickLogSection
+                .scheduleIDToPersist(
+                    scheduleID: medication.id, db: db
+                )
         }
 
-        #expect(persistedScheduleID == nil)
+        #expect(persistedID == nil)
     }
 
     @MainActor
-    @Test("Schedule persistence keeps real schedule references")
-    func schedulePersistenceKeepsRealScheduleReferences() throws {
+    @Test("Schedule persistence keeps real schedule refs")
+    func schedulePersistenceKeepsRealRefs() throws {
         try prepareTestDependencies()
 
         let store = DataStore()
@@ -226,7 +229,9 @@ struct MedicationQuickLogLoaderSuite {
             unit: "pill",
             cadence: "daily",
             interval: 1,
-            daysOfWeekMask: MedicationWeekday.mask(for: MedicationWeekday.allCases),
+            daysOfWeekMask: MedicationWeekday.mask(
+                for: MedicationWeekday.allCases
+            ),
             hour: 8,
             minute: 0,
             timeZoneIdentifier: TimeZone.current.identifier,
@@ -235,10 +240,98 @@ struct MedicationQuickLogLoaderSuite {
         )
         try insertSchedule(schedule, database: database)
 
-        let persistedScheduleID = try database.read { db in
-            try MedicationQuickLogSection.scheduleIDToPersist(scheduleID: schedule.id, db: db)
+        let persistedID = try database.read { db in
+            try MedicationQuickLogSection
+                .scheduleIDToPersist(
+                    scheduleID: schedule.id, db: db
+                )
         }
 
-        #expect(persistedScheduleID == schedule.id)
+        #expect(persistedID == schedule.id)
     }
+}
+
+// MARK: - Taken Intakes Helpers
+
+private struct TakenIntakesFixture {
+    let journal: SQLiteJournal
+    let scheduledMed: SQLiteMedication
+    let asNeededMed: SQLiteMedication
+    let schedule: SQLiteMedicationSchedule
+}
+
+@MainActor
+private func createTakenIntakesFixture(
+    database: any DatabaseWriter
+) throws -> TakenIntakesFixture {
+    let store = DataStore()
+    let journal = store.createJournal()
+
+    let scheduledMedication = store.createMedication(
+        for: journal,
+        name: "Scheduled Med",
+        defaultAmount: 1,
+        defaultUnit: "pill"
+    )
+    let asNeededMedication = store.createMedication(
+        for: journal,
+        name: "As Needed Med",
+        defaultAmount: 2,
+        defaultUnit: "pill"
+    )
+
+    let schedule = SQLiteMedicationSchedule(
+        medicationID: scheduledMedication.id,
+        label: "Morning",
+        amount: 1,
+        unit: "pill",
+        cadence: "daily",
+        interval: 1,
+        daysOfWeekMask: MedicationWeekday.mask(
+            for: MedicationWeekday.allCases
+        ),
+        hour: 8,
+        minute: 0,
+        isActive: true,
+        sortOrder: 0
+    )
+    try insertSchedule(schedule, database: database)
+
+    return TakenIntakesFixture(
+        journal: journal,
+        scheduledMed: scheduledMedication,
+        asNeededMed: asNeededMedication,
+        schedule: schedule
+    )
+}
+
+private func insertTakenIntakes(
+    database: any DatabaseWriter,
+    scheduledMed: SQLiteMedication,
+    asNeededMed: SQLiteMedication,
+    schedule: SQLiteMedicationSchedule,
+    dayStart: Date
+) throws {
+    let scheduledTimestamp =
+        dayStart.addingTimeInterval(8 * 60 * 60)
+    let asNeededTimestamp =
+        dayStart.addingTimeInterval(10 * 60 * 60)
+
+    let scheduledIntake = SQLiteMedicationIntake(
+        medicationID: scheduledMed.id,
+        scheduleID: schedule.id,
+        amount: 1,
+        unit: "pill",
+        timestamp: scheduledTimestamp,
+        origin: "scheduled"
+    )
+    let asNeededIntake = SQLiteMedicationIntake(
+        medicationID: asNeededMed.id,
+        amount: 2,
+        unit: "pill",
+        timestamp: asNeededTimestamp,
+        origin: "asNeeded"
+    )
+    try insertIntake(scheduledIntake, database: database)
+    try insertIntake(asNeededIntake, database: database)
 }

@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Pre-push hook: runs UI tests locally before pushing.
+# Skip with: git push --no-verify
+
+echo "Running UI tests before push..."
+AURALYST_XCODEBUILD_QUIET=1 ./scripts/run_ui_tests.sh

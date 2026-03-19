@@ -12,89 +12,90 @@ struct MedicationQuickLogSection: View {
     let presentAsNeeded: (SQLiteMedication, Date) -> Void
 
     var body: some View {
-        WithViewStore(store, observe: { $0 }) { viewStore in
-            Section("Quick Medication Log") {
-                DatePicker(
-                    "Log Date",
-                    selection: Binding(
-                        get: { viewStore.selectedDate },
-                        set: { viewStore.send(.selectedDateChanged($0)) }
-                    ),
-                    displayedComponents: [.date]
-                )
+        Section("Quick Medication Log") {
+            DatePicker(
+                "Log Date",
+                selection: Binding(
+                    get: { store.selectedDate },
+                    set: { store.send(.selectedDateChanged($0)) }
+                ),
+                displayedComponents: [.date]
+            )
 
-                if scheduledMedications(snapshot: viewStore.snapshot).isEmpty {
-                    Text("No scheduled medications.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(scheduledMedications(snapshot: viewStore.snapshot)) { med in
-                        if let doses = scheduledDoses(for: med, on: viewStore.selectedDate, snapshot: viewStore.snapshot), !doses.isEmpty {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(med.name)
-                                    .font(.subheadline.weight(.semibold))
-                                ForEach(doses, id: \.id) { sched in
-                                    ScheduledDoseRow(
-                                        medication: med,
-                                        schedule: sched,
-                                        date: viewStore.selectedDate,
-                                        isTaken: viewStore.snapshot.takenByScheduleID[sched.id] != nil,
-                                        toggle: { isOn in
-                                            if isOn {
-                                                logScheduledDose(
-                                                    schedule: sched,
-                                                    medication: med,
-                                                    selectedDate: viewStore.selectedDate,
-                                                    onRefresh: { viewStore.send(.refreshRequested) }
-                                                )
-                                            } else {
-                                                unlogScheduledDose(
-                                                    schedule: sched,
-                                                    selectedDate: viewStore.selectedDate,
-                                                    snapshot: viewStore.snapshot,
-                                                    onRefresh: { viewStore.send(.refreshRequested) }
-                                                )
-                                            }
+            if scheduledMedications(snapshot: store.snapshot).isEmpty {
+                Text("No scheduled medications.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(scheduledMedications(snapshot: store.snapshot)) { med in
+                    if let doses = scheduledDoses(
+                        for: med, on: store.selectedDate,
+                        snapshot: store.snapshot
+                    ), !doses.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(med.name)
+                                .font(.subheadline.weight(.semibold))
+                            ForEach(doses, id: \.id) { sched in
+                                ScheduledDoseRow(
+                                    medication: med,
+                                    schedule: sched,
+                                    date: store.selectedDate,
+                                    isTaken: store.snapshot.takenByScheduleID[sched.id] != nil,
+                                    toggle: { isOn in
+                                        if isOn {
+                                            logScheduledDose(
+                                                schedule: sched,
+                                                medication: med,
+                                                selectedDate: store.selectedDate,
+                                                onRefresh: { store.send(.refreshRequested) }
+                                            )
+                                        } else {
+                                            unlogScheduledDose(
+                                                schedule: sched,
+                                                selectedDate: store.selectedDate,
+                                                snapshot: store.snapshot,
+                                                onRefresh: { store.send(.refreshRequested) }
+                                            )
                                         }
-                                    )
-                                }
+                                    }
+                                )
                             }
-                            .padding(.vertical, 4)
-                            .accessibilityElement(children: .combine)
-                            .accessibilityIdentifier(quickLogIdentifier(for: med, context: "scheduled"))
                         }
+                        .padding(.vertical, 4)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier(quickLogIdentifier(for: med, context: "scheduled"))
                     }
                 }
+            }
 
-                if !asNeededMedications(snapshot: viewStore.snapshot).isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("As Needed")
-                            .font(.subheadline.weight(.semibold))
-                        ForEach(asNeededMedications(snapshot: viewStore.snapshot)) { med in
-                            Button {
-                                presentAsNeeded(med, viewStore.selectedDate)
-                            } label: {
-                                HStack {
-                                    Text(med.name)
-                                    Spacer()
-                                    Image(systemName: "plus.circle")
-                                }
+            if !asNeededMedications(snapshot: store.snapshot).isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("As Needed")
+                        .font(.subheadline.weight(.semibold))
+                    ForEach(asNeededMedications(snapshot: store.snapshot)) { med in
+                        Button {
+                            presentAsNeeded(med, store.selectedDate)
+                        } label: {
+                            HStack {
+                                Text(med.name)
+                                Spacer()
+                                Image(systemName: "plus.circle")
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier(quickLogIdentifier(for: med, context: "asneeded"))
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier(quickLogIdentifier(for: med, context: "asneeded"))
                     }
-                    .padding(.top, 4)
                 }
+                .padding(.top, 4)
+            }
 
-                Button("Manage Medications", action: manageAction)
-                    .foregroundStyle(.blue)
+            Button("Manage Medications", action: manageAction)
+                .foregroundStyle(.blue)
 
-                if let error = loggingError ?? viewStore.errorMessage {
-                    Text(error)
-                        .foregroundStyle(.red)
-                        .font(.caption)
-                }
+            if let error = loggingError ?? store.errorMessage {
+                Text(error)
+                    .foregroundStyle(.red)
+                    .font(.caption)
             }
         }
     }
@@ -150,8 +151,8 @@ struct MedicationQuickLogSection: View {
     }
 
     private func weekday(for date: Date) -> MedicationWeekday {
-        let w = Calendar.current.component(.weekday, from: date)
-        return MedicationWeekday(rawValue: w) ?? .monday
+        let weekdayValue = Calendar.current.component(.weekday, from: date)
+        return MedicationWeekday(rawValue: weekdayValue) ?? .monday
     }
 
     private func quickLogIdentifier(for medication: SQLiteMedication, context: String) -> String {
@@ -193,7 +194,7 @@ struct MedicationQuickLogSection: View {
             // ignore for now
         }
     }
-    
+
     static func scheduleIDToPersist(scheduleID: UUID, db: Database) throws -> UUID? {
         // Only persist a scheduleID that actually exists in the schedules table.
         let count = try Int.fetchOne(
@@ -227,12 +228,15 @@ struct MedicationQuickLogSection: View {
             let bounds = dayBounds(for: selectedDate)
             do {
                 try database.write { db in
+                    let medicationID = schedule.medicationID
+                    let start = bounds.start
+                    let end = bounds.end
                     try SQLiteMedicationIntake
                         .where { intake in
-                            intake.medicationID == schedule.medicationID &&
-                            intake.timestamp >= bounds.start &&
-                            intake.timestamp < bounds.end &&
-                            intake.scheduleID == nil
+                            intake.medicationID.eq(medicationID) &&
+                            intake.timestamp >= start &&
+                            intake.timestamp < end &&
+                            intake.scheduleID.is(nil)
                         }
                         .delete()
                         .execute(db)
@@ -245,14 +249,17 @@ struct MedicationQuickLogSection: View {
         }
     }
 
-    private func scheduledDateTime(for schedule: SQLiteMedicationSchedule, on date: Date) -> (timestamp: Date, scheduledDate: Date) {
+    private func scheduledDateTime(
+        for schedule: SQLiteMedicationSchedule,
+        on date: Date
+    ) -> (timestamp: Date, scheduledDate: Date) {
         let cal = Calendar.current
         let start = cal.startOfDay(for: date)
         var comps = cal.dateComponents([.year, .month, .day], from: start)
         comps.hour = Int(schedule.hour ?? 8)
         comps.minute = Int(schedule.minute ?? 0)
-        let ts = cal.date(from: comps) ?? start
-        return (ts, start)
+        let scheduled = cal.date(from: comps) ?? start
+        return (scheduled, start)
     }
 
     private func dayBounds(for date: Date) -> (start: Date, end: Date) {
@@ -274,10 +281,13 @@ private struct ScheduledDoseRow: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Button(action: { toggle(!isTaken) }) {
-                Image(systemName: isTaken ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isTaken ? .blue : .secondary)
-            }
+            Button(
+                action: { toggle(!isTaken) },
+                label: {
+                    Image(systemName: isTaken ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(isTaken ? .blue : .secondary)
+                }
+            )
             .buttonStyle(.plain)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -304,123 +314,71 @@ private struct ScheduledDoseRow: View {
         comps.hour = Int(schedule.hour ?? 8)
         comps.minute = Int(schedule.minute ?? 0)
         let cal = Calendar.current
-        let d = cal.date(from: comps) ?? Date()
-        return d.formatted(date: .omitted, time: .shortened)
+        let doseTime = cal.date(from: comps) ?? Date()
+        return doseTime.formatted(date: .omitted, time: .shortened)
     }
 }
 
 struct AsNeededIntakeView: View {
-    let store: StoreOf<AsNeededIntakeFeature>
+    @Bindable var store: StoreOf<AsNeededIntakeFeature>
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        WithViewStore(store, observe: { $0 }) { viewStore in
-            NavigationStack {
-                Form {
-                    Section("Medication") {
-                        Text(viewStore.medication.name)
-                    }
-                    Section("When") {
-                        DatePicker(
-                            "Time",
-                            selection: viewStore.binding(
-                                get: \.timestamp,
-                                send: { .binding(.set(\.timestamp, $0)) }
-                            ),
-                            displayedComponents: [.date, .hourAndMinute]
-                        )
-                    }
-                    Section("Dose") {
-                        TextField(
-                            "Amount",
-                            text: viewStore.binding(
-                                get: \.amount,
-                                send: { .binding(.set(\.amount, $0)) }
-                            )
-                        )
-                        .decimalPadKeyboard()
-                        TextField(
-                            "Unit",
-                            text: viewStore.binding(
-                                get: \.unit,
-                                send: { .binding(.set(\.unit, $0)) }
-                            )
-                        )
-                    }
-                    Section("Notes") {
-                        TextField(
-                            "Optional note",
-                            text: viewStore.binding(
-                                get: \.notes,
-                                send: { .binding(.set(\.notes, $0)) }
-                            ),
-                            axis: .vertical
-                        )
-                        .lineLimit(2...4)
-                    }
+        NavigationStack {
+            Form {
+                Section("Medication") {
+                    Text(store.medication.name)
                 }
-                .navigationTitle("Log Dose")
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel", role: .cancel) { dismiss() }
-                            .keyboardShortcut(.cancelAction)
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Save") { viewStore.send(.saveTapped) }
-                            .disabled(!canSave(viewStore) || viewStore.isSaving)
-                            .keyboardShortcut(.defaultAction)
-                    }
-                }
-                .alert(
-                    "Unable to Save",
-                    isPresented: viewStore.binding(
-                        get: { $0.errorMessage != nil },
-                        send: { _ in .clearError }
+                Section("When") {
+                    DatePicker(
+                        "Time",
+                        selection: $store.timestamp,
+                        displayedComponents: [.date, .hourAndMinute]
                     )
-                ) {
-                    Button("OK") { viewStore.send(.clearError) }
-                } message: {
-                    Text(viewStore.errorMessage ?? "")
                 }
-                .onChange(of: viewStore.didSave) { _, didSave in
-                    guard didSave else { return }
-                    viewStore.send(.clearDidSave)
-                    dismiss()
+                Section("Dose") {
+                    TextField("Amount", text: $store.amount)
+                        .decimalPadKeyboard()
+                    TextField("Unit", text: $store.unit)
                 }
-                .task { viewStore.send(.task) }
+                Section("Notes") {
+                    TextField("Optional note", text: $store.notes, axis: .vertical)
+                        .lineLimit(2...4)
+                }
             }
+            .navigationTitle("Log Dose")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", role: .cancel) { dismiss() }
+                        .keyboardShortcut(.cancelAction)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { store.send(.saveTapped) }
+                        .disabled(!canSave() || store.isSaving)
+                        .keyboardShortcut(.defaultAction)
+                }
+            }
+            .alert(
+                "Unable to Save",
+                isPresented: Binding(
+                    get: { store.errorMessage != nil },
+                    set: { _ in store.send(.clearError) }
+                )
+            ) {
+                Button("OK") { store.send(.clearError) }
+            } message: {
+                Text(store.errorMessage ?? "")
+            }
+            .onChange(of: store.didSave) { _, didSave in
+                guard didSave else { return }
+                store.send(.clearDidSave)
+                dismiss()
+            }
+            .task { store.send(.task) }
         }
     }
 
-    private func canSave(_ viewStore: ViewStoreOf<AsNeededIntakeFeature>) -> Bool {
-        Double(viewStore.amount) != nil || viewStore.medication.defaultAmount != nil
-    }
-}
-
-extension Notification.Name {
-    static let medicationsDidChange = Notification.Name("com.auralyst.medicationsDidChange")
-    static let medicationIntakesDidChange = Notification.Name("com.auralyst.medicationIntakesDidChange")
-}
-
-extension Double {
-    var cleanAmount: String {
-        if floor(self) == self { return String(Int(self)) }
-        return String(self)
-    }
-}
-
-#Preview {
-    withPreviewDataStore {
-        let journal = DependencyValues._current.databaseClient.createJournal()
-        List {
-            MedicationQuickLogSection(
-                store: Store(initialState: MedicationQuickLogFeature.State(journalID: journal.id)) {
-                    MedicationQuickLogFeature()
-                },
-                manageAction: {},
-                loggingError: nil,
-                presentAsNeeded: { _, _ in }
-            )
-        }
+    private func canSave() -> Bool {
+        Double(store.amount) != nil || store.medication.defaultAmount != nil
     }
 }

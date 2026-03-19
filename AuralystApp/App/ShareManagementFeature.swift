@@ -47,7 +47,8 @@ struct ShareManagementFeature {
                         .refreshResponse(
                             TaskResult {
                                 try await database.read { db in
-                                    guard let journal = try SQLiteJournal.find(journalID).fetchOne(db) else { return false }
+                                    guard let journal = try SQLiteJournal.find(journalID).fetchOne(db)
+                                    else { return false }
                                     return try SyncMetadata
                                         .find(journal.syncMetadataID)
                                         .select(\.isShared)

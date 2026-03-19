@@ -9,11 +9,16 @@ struct AuralystMacApp: App {
 
     init() {
         let runningTests = AppBootstrap.isRunningTests()
-        let configuration = AppBootstrap.makeConfiguration(isRunningTests: runningTests)
+        let runningUIAutomation = AppBootstrap.isRunningUIAutomation()
+        let configuration = AppBootstrap.makeConfiguration(
+            isRunningTests: runningTests || runningUIAutomation
+        )
         self.isRunningTests = runningTests
         self.configuration = configuration
 
-        AppBootstrap.initializeEnvironment(isRunningTests: runningTests)
+        AppBootstrap.initializeEnvironment(
+            isRunningTests: runningTests || runningUIAutomation
+        )
     }
 
     var body: some Scene {

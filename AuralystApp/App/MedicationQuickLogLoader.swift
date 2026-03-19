@@ -21,7 +21,7 @@ struct MedicationQuickLogLoader {
     func load(journalID: UUID, on date: Date) throws -> MedicationQuickLogSnapshot {
         let medications = try database.read { db in
             try SQLiteMedication
-                .where { $0.journalID == journalID }
+                .where { $0.journalID.eq(journalID) }
                 .order { $0.name.asc() }
                 .fetchAll(db)
         }
@@ -40,7 +40,7 @@ struct MedicationQuickLogLoader {
         try database.read { db in
             for medication in medications {
                 let schedules = try SQLiteMedicationSchedule
-                    .where { $0.medicationID == medication.id }
+                    .where { $0.medicationID.eq(medication.id) }
                     .order { $0.sortOrder.asc() }
                     .order { $0.hour.asc() }
                     .order { $0.minute.asc() }
@@ -53,7 +53,10 @@ struct MedicationQuickLogLoader {
         return mapping
     }
 
-    private func loadIntakes(for medications: [SQLiteMedication], on date: Date) throws -> [UUID: SQLiteMedicationIntake] {
+    private func loadIntakes(
+        for medications: [SQLiteMedication],
+        on date: Date
+    ) throws -> [UUID: SQLiteMedicationIntake] {
         let medIDs = Set(medications.map { $0.id })
         let bounds = dayBounds(for: date)
         var taken: [UUID: SQLiteMedicationIntake] = [:]

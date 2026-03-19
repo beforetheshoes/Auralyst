@@ -10,176 +10,181 @@ struct ShareManagementView: View {
     let store: StoreOf<ShareManagementFeature>
 
     var body: some View {
-        WithViewStore(store, observe: { $0 }) { viewStore in
-            NavigationStack {
-                ZStack {
-                    LinearGradient(
-                        colors: [Color.platformBackground, Color.blue.opacity(0.08)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                    .ignoresSafeArea()
+        NavigationStack {
+            ZStack {
+                LinearGradient(
+                    colors: [Color.platformBackground, Color.blue.opacity(0.08)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
 
-                    List {
-                        Section {
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack(spacing: 12) {
-                                    ZStack {
-                                        Circle()
-                                            .fill(
-                                                LinearGradient(
-                                                    colors: [.blue.opacity(0.25), .blue.opacity(0.6)],
-                                                    startPoint: .topLeading,
-                                                    endPoint: .bottomTrailing
-                                                )
+                List {
+                    Section {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    Circle()
+                                        .fill(
+                                            LinearGradient(
+                                                colors: [.blue.opacity(0.25), .blue.opacity(0.6)],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
                                             )
-                                            .frame(width: 44, height: 44)
-                                        Image(systemName: "person.2.wave.2.fill")
-                                            .foregroundStyle(.white)
-                                    }
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Journal Sharing")
-                                            .font(.headline)
-                                        Text("Share this journal with family, friends, or healthcare providers for collaborative tracking.")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer(minLength: 0)
+                                        )
+                                        .frame(width: 44, height: 44)
+                                    Image(systemName: "person.2.wave.2.fill")
+                                        .foregroundStyle(.white)
                                 }
-                                .padding(12)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 16)
-                                        .fill(.ultraThinMaterial)
-                                )
-                            }
-                            .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
-                        }
-
-                        Section("Current Status") {
-                            if viewStore.isLoading {
-                                HStack(spacing: 10) {
-                                    ProgressView()
-                                    Text("Checking sharing status…")
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Journal Sharing")
+                                        .font(.headline)
+                                    Text(
+                                        "Share this journal with family, friends,"
+                                        + " or healthcare providers for collaborative tracking."
+                                    )
+                                        .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
-                            } else if viewStore.isShared {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "checkmark.seal.fill")
-                                        .foregroundStyle(.green)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Shared")
-                                            .font(.headline.weight(.semibold))
-                                            .foregroundStyle(.green)
-                                        Text("Others can collaborate on this journal.")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                }
-                            } else {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "lock.fill")
-                                        .foregroundStyle(.secondary)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Not Shared")
-                                            .font(.headline)
-                                        Text("Only you can access this journal.")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                }
+                                Spacer(minLength: 0)
                             }
+                            .padding(12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(.ultraThinMaterial)
+                            )
                         }
+                        .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+                    }
 
-                        Section("Actions") {
-                            if viewStore.isShared {
-                                Button {
-                                    viewStore.send(.shareTapped)
-                                    triggerImpactFeedback(style: .light)
-                                } label: {
-                                    HStack {
-                                        Image(systemName: "person.crop.circle.badge.checkmark")
-                                        Text("Manage Sharing")
-                                            .font(.body.weight(.semibold))
-                                        Spacer()
-                                        Image(systemName: "chevron.right")
-                                            .foregroundStyle(.tertiary)
-                                    }
-                                }
-                                .tint(.blue)
-                            } else {
-                                Button {
-                                    viewStore.send(.shareTapped)
-                                    triggerImpactFeedback(style: .medium)
-                                } label: {
-                                    HStack {
-                                        Image(systemName: "square.and.arrow.up.on.square.fill")
-                                        Text("Start Sharing")
-                                            .font(.body.weight(.semibold))
-                                        Spacer()
-                                        Image(systemName: "chevron.right")
-                                            .foregroundStyle(.tertiary)
-                                    }
-                                }
-                                .tint(.blue)
-                            }
-                        }
-
-                        if let errorMessage = viewStore.errorMessage {
-                            Section {
-                                HStack(alignment: .top, spacing: 12) {
-                                    Image(systemName: "exclamationmark.triangle.fill")
-                                        .foregroundStyle(.yellow)
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("Something went wrong")
-                                            .font(.headline)
-                                        Text(errorMessage)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer(minLength: 0)
-                                }
-                                .padding(12)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 14)
-                                        .fill(Color.yellow.opacity(0.12))
-                                )
-                            }
-                        }
-
-                        Section {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("About Sharing")
-                                    .font(.headline)
-                                Text("Sharing uses iCloud and CloudKit to securely collaborate across devices and with trusted people. You can change access or stop sharing at any time.")
-                                    .font(.caption)
+                    Section("Current Status") {
+                        if store.isLoading {
+                            HStack(spacing: 10) {
+                                ProgressView()
+                                Text("Checking sharing status…")
                                     .foregroundStyle(.secondary)
                             }
-                            .padding(.vertical, 6)
+                        } else if store.isShared {
+                            HStack(spacing: 12) {
+                                Image(systemName: "checkmark.seal.fill")
+                                    .foregroundStyle(.green)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Shared")
+                                        .font(.headline.weight(.semibold))
+                                        .foregroundStyle(.green)
+                                    Text("Others can collaborate on this journal.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                            }
+                        } else {
+                            HStack(spacing: 12) {
+                                Image(systemName: "lock.fill")
+                                    .foregroundStyle(.secondary)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Not Shared")
+                                        .font(.headline)
+                                    Text("Only you can access this journal.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                            }
                         }
                     }
-                    .scrollContentBackground(.hidden)
-                    .refreshable {
-                        viewStore.send(.refresh)
+
+                    Section("Actions") {
+                        if store.isShared {
+                            Button {
+                                store.send(.shareTapped)
+                                triggerImpactFeedback(style: .light)
+                            } label: {
+                                HStack {
+                                    Image(systemName: "person.crop.circle.badge.checkmark")
+                                    Text("Manage Sharing")
+                                        .font(.body.weight(.semibold))
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                            .tint(.blue)
+                        } else {
+                            Button {
+                                store.send(.shareTapped)
+                                triggerImpactFeedback(style: .medium)
+                            } label: {
+                                HStack {
+                                    Image(systemName: "square.and.arrow.up.on.square.fill")
+                                    Text("Start Sharing")
+                                        .font(.body.weight(.semibold))
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                            .tint(.blue)
+                        }
                     }
-                    .task {
-                        viewStore.send(.task)
+
+                    if let errorMessage = store.errorMessage {
+                        Section {
+                            HStack(alignment: .top, spacing: 12) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(.yellow)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Something went wrong")
+                                        .font(.headline)
+                                    Text(errorMessage)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .padding(12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .fill(Color.yellow.opacity(0.12))
+                            )
+                        }
                     }
-                    #if os(iOS)
-                    .sheet(
-                        item: viewStore.binding(
-                            get: \.sharedRecord,
-                            send: ShareManagementFeature.Action.setSharedRecord
-                        )
-                    ) { sharedRecord in
-                        CloudSharingView(sharedRecord: sharedRecord)
+
+                    Section {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("About Sharing")
+                                .font(.headline)
+                            Text(
+                                "Sharing uses iCloud and CloudKit to securely collaborate"
+                                + " across devices and with trusted people."
+                                + " You can change access or stop sharing at any time."
+                            )
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 6)
                     }
-                    #endif
                 }
-                .navigationTitle("Share Journal")
-                .inlineNavigationTitleDisplay()
+                .scrollContentBackground(.hidden)
+                .refreshable {
+                    store.send(.refresh)
+                }
+                .task {
+                    store.send(.task)
+                }
+                #if os(iOS)
+                .sheet(
+                    item: Binding(
+                        get: { store.sharedRecord },
+                        set: { store.send(.setSharedRecord($0)) }
+                    )
+                ) { sharedRecord in
+                    CloudSharingView(sharedRecord: sharedRecord)
+                }
+                #endif
             }
+            .navigationTitle("Share Journal")
+            .inlineNavigationTitleDisplay()
         }
     }
 

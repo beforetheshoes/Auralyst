@@ -80,69 +80,83 @@ enum ExportPreflightChecker {
 }
 
 private extension ExportPreflightChecker {
-    static func check(journal: SQLiteJournal, db: Database) throws -> ExportPreflightReport {
+    static func check(
+        journal: SQLiteJournal, db: Database
+    ) throws -> ExportPreflightReport {
         let medicationIDs = try medicationIDs(for: journal, db: db)
         let scheduleIDSet = try scheduleIDs(for: medicationIDs, db: db)
         let entryIDSet = try entryIDs(for: journal, db: db)
 
         let intakes = try intakes(for: medicationIDs, db: db)
+        let notes = try collaboratorNotes(for: journal, db: db)
+
+        let issues = buildIssues(
+            intakes: intakes,
+            notes: notes,
+            scheduleIDSet: scheduleIDSet,
+            entryIDSet: entryIDSet
+        )
+
+        return ExportPreflightReport(issues: issues)
+    }
+
+    static func buildIssues(
+        intakes: [SQLiteMedicationIntake],
+        notes: [SQLiteCollaboratorNote],
+        scheduleIDSet: Set<String>,
+        entryIDSet: Set<String>
+    ) -> [ExportPreflightIssue] {
         let missingScheduleRefs = intakes.filter { intake in
-            guard let scheduleID = intake.scheduleID?.uuidString.lowercased() else { return false }
-            return !scheduleIDSet.contains(scheduleID)
+            guard let sid = intake.scheduleID?.uuidString.lowercased()
+            else { return false }
+            return !scheduleIDSet.contains(sid)
         }
         let missingIntakeEntryRefs = intakes.filter { intake in
-            guard let entryID = intake.entryID?.uuidString.lowercased() else { return false }
-            return !entryIDSet.contains(entryID)
+            guard let eid = intake.entryID?.uuidString.lowercased()
+            else { return false }
+            return !entryIDSet.contains(eid)
         }
-
-        let notes = try collaboratorNotes(for: journal, db: db)
         let missingNoteEntryRefs = notes.filter { note in
-            guard let entryID = note.entryID?.uuidString.lowercased() else { return false }
-            return !entryIDSet.contains(entryID)
+            guard let eid = note.entryID?.uuidString.lowercased()
+            else { return false }
+            return !entryIDSet.contains(eid)
         }
 
         var issues: [ExportPreflightIssue] = []
         if !missingScheduleRefs.isEmpty {
-            issues.append(
-                ExportPreflightIssue(
-                    kind: .missingScheduleReferences,
-                    count: missingScheduleRefs.count,
-                    examples: missingScheduleRefs.prefix(3).map {
-                        "\($0.id.uuidString) -> \($0.scheduleID?.uuidString ?? "nil")"
-                    }
-                )
-            )
+            issues.append(ExportPreflightIssue(
+                kind: .missingScheduleReferences,
+                count: missingScheduleRefs.count,
+                examples: missingScheduleRefs.prefix(3).map {
+                    "\($0.id.uuidString) -> \($0.scheduleID?.uuidString ?? "nil")"
+                }
+            ))
         }
         if !missingIntakeEntryRefs.isEmpty {
-            issues.append(
-                ExportPreflightIssue(
-                    kind: .missingIntakeEntryReferences,
-                    count: missingIntakeEntryRefs.count,
-                    examples: missingIntakeEntryRefs.prefix(3).map {
-                        "\($0.id.uuidString) -> \($0.entryID?.uuidString ?? "nil")"
-                    }
-                )
-            )
+            issues.append(ExportPreflightIssue(
+                kind: .missingIntakeEntryReferences,
+                count: missingIntakeEntryRefs.count,
+                examples: missingIntakeEntryRefs.prefix(3).map {
+                    "\($0.id.uuidString) -> \($0.entryID?.uuidString ?? "nil")"
+                }
+            ))
         }
         if !missingNoteEntryRefs.isEmpty {
-            issues.append(
-                ExportPreflightIssue(
-                    kind: .missingNoteEntryReferences,
-                    count: missingNoteEntryRefs.count,
-                    examples: missingNoteEntryRefs.prefix(3).map {
-                        "\($0.id.uuidString) -> \($0.entryID?.uuidString ?? "nil")"
-                    }
-                )
-            )
+            issues.append(ExportPreflightIssue(
+                kind: .missingNoteEntryReferences,
+                count: missingNoteEntryRefs.count,
+                examples: missingNoteEntryRefs.prefix(3).map {
+                    "\($0.id.uuidString) -> \($0.entryID?.uuidString ?? "nil")"
+                }
+            ))
         }
-
-        return ExportPreflightReport(issues: issues)
+        return issues
     }
 
     static func medicationIDs(for journal: SQLiteJournal, db: Database) throws -> [UUID] {
         try SQLiteMedication
             .select { $0.id }
-            .where { $0.journalID == journal.id }
+            .where { $0.journalID.eq(journal.id) }
             .fetchAll(db)
     }
 
@@ -158,7 +172,7 @@ private extension ExportPreflightChecker {
     static func entryIDs(for journal: SQLiteJournal, db: Database) throws -> Set<String> {
         let entries = try SQLiteSymptomEntry
             .select { $0.id }
-            .where { $0.journalID == journal.id }
+            .where { $0.journalID.eq(journal.id) }
             .fetchAll(db)
         return Set(entries.map { $0.uuidString.lowercased() })
     }
@@ -172,7 +186,7 @@ private extension ExportPreflightChecker {
 
     static func collaboratorNotes(for journal: SQLiteJournal, db: Database) throws -> [SQLiteCollaboratorNote] {
         try SQLiteCollaboratorNote
-            .where { $0.journalID == journal.id }
+            .where { $0.journalID.eq(journal.id) }
             .fetchAll(db)
     }
 
@@ -189,4 +203,3 @@ private extension ExportPreflightChecker {
         try db.execute(sql: sql, arguments: args)
     }
 }
-

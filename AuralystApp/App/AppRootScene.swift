@@ -26,22 +26,20 @@ private struct AppRootView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        WithViewStore(store, observe: { $0 }) { viewStore in
-            Group {
-                if viewStore.isRunningTests {
-                    Text("Running Tests")
-                } else {
-                    ContentView(store: store)
-                }
+        Group {
+            if store.isRunningTests {
+                Text("Running Tests")
+            } else {
+                ContentView(store: store)
             }
-            .task {
-                guard viewStore.shouldStartSync else { return }
-                viewStore.send(.task)
-            }
-            .onChange(of: scenePhase) { _, newPhase in
-                guard viewStore.shouldStartSync else { return }
-                viewStore.send(.scenePhaseChanged(newPhase))
-            }
+        }
+        .task {
+            guard store.shouldStartSync else { return }
+            store.send(.task)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard store.shouldStartSync else { return }
+            store.send(.scenePhaseChanged(newPhase))
         }
     }
 }

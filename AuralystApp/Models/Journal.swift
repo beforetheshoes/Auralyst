@@ -14,5 +14,9 @@ struct SQLiteJournal: Identifiable, Equatable {
 
 extension SQLiteJournal {
     static let privateTables: [String] = []
-    static let shareableTables: [String] = ["SQLiteJournal", "SQLiteSymptomEntry", "SQLiteCollaboratorNote", "SQLiteMedication", "SQLiteMedicationIntake", "SQLiteMedicationSchedule"]
+    static let shareableTables: [String] = [
+        "SQLiteJournal", "SQLiteSymptomEntry",
+        "SQLiteCollaboratorNote", "SQLiteMedication",
+        "SQLiteMedicationIntake", "SQLiteMedicationSchedule"
+    ]
 }

@@ -3,7 +3,7 @@ import ComposableArchitecture
 import Dependencies
 
 struct MedicationIntakeEditorView: View {
-    let store: StoreOf<MedicationIntakeEditorFeature>
+    @Bindable var store: StoreOf<MedicationIntakeEditorFeature>
     @Environment(\.dismiss) private var dismiss
 
     private let numberFormatter: NumberFormatter = {
@@ -15,100 +15,73 @@ struct MedicationIntakeEditorView: View {
     }()
 
     var body: some View {
-        WithViewStore(store, observe: { $0 }) { viewStore in
-            Group {
-                if viewStore.intake != nil {
-                    Form {
-                        Section("Medication") {
-                            DatePicker(
-                                "Logged",
-                                selection: viewStore.binding(
-                                    get: \.timestamp,
-                                    send: { .binding(.set(\.timestamp, $0)) }
-                                ),
-                                displayedComponents: [.date, .hourAndMinute]
-                            )
-                            TextField(
-                                "Amount",
-                                value: viewStore.binding(
-                                    get: { $0.amountValue },
-                                    send: { .binding(.set(\.amountValue, $0)) }
-                                ),
-                                formatter: numberFormatter
-                            )
-                            .decimalPadKeyboard()
-                            TextField(
-                                "Unit",
-                                text: viewStore.binding(
-                                    get: \.unit,
-                                    send: { .binding(.set(\.unit, $0)) }
-                                )
-                            )
-                            TextField(
-                                "Notes",
-                                text: viewStore.binding(
-                                    get: \.notes,
-                                    send: { .binding(.set(\.notes, $0)) }
-                                ),
-                                axis: .vertical
-                            )
+        Group {
+            if store.intake != nil {
+                Form {
+                    Section("Medication") {
+                        DatePicker(
+                            "Logged",
+                            selection: $store.timestamp,
+                            displayedComponents: [.date, .hourAndMinute]
+                        )
+                        TextField(
+                            "Amount",
+                            value: $store.amountValue,
+                            formatter: numberFormatter
+                        )
+                        .decimalPadKeyboard()
+                        TextField("Unit", text: $store.unit)
+                        TextField("Notes", text: $store.notes, axis: .vertical)
                             .lineLimit(2...6)
-                        }
+                    }
 
-                        Section {
-                            Button("Delete Dose", role: .destructive) {
-                                viewStore.send(.deleteTapped)
-                            }
+                    Section {
+                        Button("Delete Dose", role: .destructive) {
+                            store.send(.deleteTapped)
                         }
-                    }
-                    .navigationTitle("Edit Dose")
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Cancel", action: { dismiss() })
-                        }
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Save", action: { viewStore.send(.saveTapped) })
-                                .keyboardShortcut(.defaultAction)
-                        }
-                    }
-                } else {
-                    VStack(spacing: 12) {
-                        ProgressView()
-                        Text("Loading dose…")
-                            .foregroundStyle(.secondary)
                     }
                 }
-            }
-            .task { viewStore.send(.task) }
-            .confirmationDialog(
-                "Delete Dose?",
-                isPresented: viewStore.binding(
-                    get: \.showDeleteConfirmation,
-                    send: { .binding(.set(\.showDeleteConfirmation, $0)) }
-                )
-            ) {
-                Button("Delete", role: .destructive) {
-                    viewStore.send(.deleteConfirmed)
+                .navigationTitle("Edit Dose")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel", action: { dismiss() })
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save", action: { store.send(.saveTapped) })
+                            .keyboardShortcut(.defaultAction)
+                    }
                 }
-            } message: {
-                Text("This removes the logged medication permanently.")
+            } else {
+                VStack(spacing: 12) {
+                    ProgressView()
+                    Text("Loading dose…")
+                        .foregroundStyle(.secondary)
+                }
             }
-            .alert(
-                "Unable to Save",
-                isPresented: viewStore.binding(
-                    get: { $0.errorMessage != nil },
-                    send: { _ in .clearError }
-                )
-            ) {
-                Button("OK", role: .cancel) { viewStore.send(.clearError) }
-            } message: {
-                Text(viewStore.errorMessage ?? "")
+        }
+        .task { store.send(.task) }
+        .confirmationDialog(
+            "Delete Dose?",
+            isPresented: $store.showDeleteConfirmation
+        ) {
+            Button("Delete", role: .destructive) {
+                store.send(.deleteConfirmed)
             }
-            .onChange(of: viewStore.didFinish) { _, finished in
-                guard finished else { return }
-                viewStore.send(.clearDidFinish)
-                dismiss()
-            }
+        } message: {
+            Text("This removes the logged medication permanently.")
+        }
+        .alert(
+            "Unable to Save",
+            isPresented: Binding(get: { store.errorMessage != nil }, set: { _ in store.send(.clearError) })
+        ) {
+            Button("OK", role: .cancel) { store.send(.clearError) }
+        } message: {
+            Text(store.errorMessage ?? "")
+        }
+        .onChange(of: store.didFinish) { _, finished in
+            guard finished else { return }
+            store.send(.clearDidFinish)
+            dismiss()
         }
     }
 }
@@ -118,7 +91,7 @@ struct MedicationIntakeEditorView: View {
         let databaseClient = DependencyValues._current.databaseClient
         let journal = databaseClient.createJournal()
         let medication = databaseClient.createMedication(journal, "Ibuprofen", nil, nil)
-        let intake = try! databaseClient.createMedicationIntake(medication, 200, "mg")
+        let intake = previewValue { try databaseClient.createMedicationIntake(medication, 200, "mg") }
 
         NavigationStack {
             MedicationIntakeEditorView(
