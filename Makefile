@@ -7,17 +7,7 @@ setup:
 
 # Run UI tests locally (same as pre-push hook)
 test-ui:
-	xcodebuild test \
-		-project AuralystApp.xcodeproj \
-		-scheme AuralystApp \
-		-destination "platform=iOS Simulator,name=iPhone 16 Pro" \
-		-only-testing:AuralystAppUITests \
-		-skipPackagePluginValidation \
-		-quiet \
-		CODE_SIGN_IDENTITY="-" \
-		CODE_SIGNING_REQUIRED=NO \
-		CODE_SIGNING_ALLOWED=NO \
-		ENABLE_USER_SCRIPT_SANDBOXING=NO
+	AURALYST_XCODEBUILD_QUIET=1 ./scripts/run_ui_tests.sh
 
 # Run unit tests locally
 test-unit:

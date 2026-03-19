@@ -23,30 +23,14 @@ jobs:
           defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
           defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
 
-      - name: Detect simulator
-        run: |
-          DEVICE=$(xcrun xctrace list devices 2>&1 | grep -oE 'iPhone.*?[^\(]+' | head -1 | awk '{$1=$1;print}' | sed -e "s/ Simulator$//")
-          echo "DEVICE=$DEVICE" >> "$GITHUB_ENV"
-
       - name: Build and run UI tests
         run: |
-          xcodebuild test \
-            -project AuralystApp.xcodeproj \
-            -scheme AuralystApp \
-            -destination "platform=iOS Simulator,name=$DEVICE" \
-            -only-testing:AuralystAppUITests \
-            -resultBundlePath UITestResults.xcresult \
-            -skipPackagePluginValidation \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            ENABLE_USER_SCRIPT_SANDBOXING=NO \
-            SWIFT_ENABLE_EXPERIMENTAL_FEATURES=Macros \
-            OTHER_SWIFT_FLAGS='$(inherited) -enable-experimental-feature Macros -enable-experimental-feature CompilerPlugin'
+          AURALYST_UI_TEST_RESULT_BUNDLE="$RUNNER_TEMP/UITestResults.xcresult" \
+          ./scripts/run_ui_tests.sh
 
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: ui-test-results
-          path: UITestResults.xcresult
+          path: ${{ runner.temp }}/UITestResults.xcresult

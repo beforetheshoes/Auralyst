@@ -9,8 +9,21 @@ struct AppBootstrap {
     }
 
     static func isRunningTests(processInfo: ProcessInfo = .processInfo) -> Bool {
-        if processInfo.environment["FORCE_FULL_APP"] == "1" { return false }
-        return processInfo.environment["XCTestConfigurationFilePath"] != nil
+        isRunningTests(environment: processInfo.environment)
+    }
+
+    static func isRunningTests(environment: [String: String]) -> Bool {
+        if environment["FORCE_FULL_APP"] == "1" { return false }
+        return environment["XCTestConfigurationFilePath"] != nil
+    }
+
+    static func isRunningUIAutomation(processInfo: ProcessInfo = .processInfo) -> Bool {
+        isRunningUIAutomation(environment: processInfo.environment)
+    }
+
+    static func isRunningUIAutomation(environment: [String: String]) -> Bool {
+        if environment["FORCE_FULL_APP"] == "1" { return false }
+        return environment["AURALYST_UI_RESET"] == "1"
     }
 
     static func makeConfiguration(isRunningTests: Bool) -> Configuration {
