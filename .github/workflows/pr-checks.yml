@@ -34,13 +34,12 @@ jobs:
           defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
           defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
 
-      - name: Build for testing
+      - name: Build for testing (macOS)
         run: |
-          device=$(xcrun xctrace list devices 2>&1 | grep -oE 'iPhone.*?[^\(]+' | head -1 | awk '{$1=$1;print}' | sed -e "s/ Simulator$//")
           xcodebuild build-for-testing \
             -project AuralystApp.xcodeproj \
             -scheme "$SCHEME" \
-            -destination "platform=iOS Simulator,name=$device" \
+            -destination "platform=macOS" \
             -skipPackagePluginValidation \
             SWIFT_ENABLE_EXPERIMENTAL_FEATURES=Macros \
             OTHER_SWIFT_FLAGS='$(inherited) -enable-experimental-feature Macros -enable-experimental-feature CompilerPlugin'
@@ -62,13 +61,12 @@ jobs:
           defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
           defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
 
-      - name: Run unit tests
+      - name: Run unit tests (macOS)
         run: |
-          device=$(xcrun xctrace list devices 2>&1 | grep -oE 'iPhone.*?[^\(]+' | head -1 | awk '{$1=$1;print}' | sed -e "s/ Simulator$//")
           xcodebuild test \
             -project AuralystApp.xcodeproj \
             -scheme "$SCHEME" \
-            -destination "platform=iOS Simulator,name=$device" \
+            -destination "platform=macOS" \
             -skip-testing:AuralystAppUITests \
             -resultBundlePath TestResults.xcresult \
             -skipPackagePluginValidation \
@@ -101,14 +99,13 @@ jobs:
       - name: Install xcpretty
         run: gem install xcpretty
 
-      - name: Build and analyze
+      - name: Build and analyze (macOS)
         run: |
-          device=$(xcrun xctrace list devices 2>&1 | grep -oE 'iPhone.*?[^\(]+' | head -1 | awk '{$1=$1;print}' | sed -e "s/ Simulator$//")
           set -o pipefail
           xcodebuild clean build analyze \
             -project AuralystApp.xcodeproj \
             -scheme "$SCHEME" \
-            -destination "platform=iOS Simulator,name=$device" \
+            -destination "platform=macOS" \
             -skipPackagePluginValidation \
             SWIFT_ENABLE_EXPERIMENTAL_FEATURES=Macros \
             OTHER_SWIFT_FLAGS='$(inherited) -enable-experimental-feature Macros -enable-experimental-feature CompilerPlugin' \
