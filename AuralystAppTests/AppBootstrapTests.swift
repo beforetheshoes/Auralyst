@@ -6,7 +6,7 @@ final class AppBootstrapTests: XCTestCase {
         XCTAssertTrue(
             AppBootstrap.isRunningUIAutomation(
                 environment: [
-                    "AURALYST_UI_RESET": "1",
+                    "AURALYST_UI_RESET": "1"
                 ]
             )
         )
@@ -17,7 +17,7 @@ final class AppBootstrapTests: XCTestCase {
             AppBootstrap.isRunningUIAutomation(
                 environment: [
                     "AURALYST_UI_RESET": "1",
-                    "FORCE_FULL_APP": "1",
+                    "FORCE_FULL_APP": "1"
                 ]
             )
         )
@@ -27,7 +27,7 @@ final class AppBootstrapTests: XCTestCase {
         XCTAssertFalse(
             AppBootstrap.isRunningTests(
                 environment: [
-                    "AURALYST_UI_RESET": "1",
+                    "AURALYST_UI_RESET": "1"
                 ]
             )
         )
