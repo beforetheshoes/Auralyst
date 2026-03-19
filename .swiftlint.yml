@@ -16,16 +16,15 @@ disabled_rules:
   - force_try
   - multiple_closures_with_trailing_closure
   - trailing_newline
+  - function_parameter_count
 
 opt_in_rules:
   - empty_count
   - closure_spacing
   - contains_over_filter_count
-  - multiline_arguments
-  - vertical_whitespace_closing_braces
 
 line_length:
-  warning: 180
-  error: 250
+  warning: 200
+  error: 300
   ignores_comments: true
   ignores_urls: true
