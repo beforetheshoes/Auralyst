@@ -41,6 +41,9 @@ jobs:
             -scheme "$SCHEME" \
             -destination "platform=macOS" \
             -skipPackagePluginValidation \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
             SWIFT_ENABLE_EXPERIMENTAL_FEATURES=Macros \
             OTHER_SWIFT_FLAGS='$(inherited) -enable-experimental-feature Macros -enable-experimental-feature CompilerPlugin'
 
@@ -70,6 +73,9 @@ jobs:
             -skip-testing:AuralystAppUITests \
             -resultBundlePath TestResults.xcresult \
             -skipPackagePluginValidation \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
             SWIFT_ENABLE_EXPERIMENTAL_FEATURES=Macros \
             OTHER_SWIFT_FLAGS='$(inherited) -enable-experimental-feature Macros -enable-experimental-feature CompilerPlugin'
 
@@ -107,6 +113,9 @@ jobs:
             -scheme "$SCHEME" \
             -destination "platform=macOS" \
             -skipPackagePluginValidation \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
             SWIFT_ENABLE_EXPERIMENTAL_FEATURES=Macros \
             OTHER_SWIFT_FLAGS='$(inherited) -enable-experimental-feature Macros -enable-experimental-feature CompilerPlugin' \
             2>&1 | xcpretty && exit ${PIPESTATUS[0]}
