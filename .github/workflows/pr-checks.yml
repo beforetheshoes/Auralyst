@@ -16,10 +16,11 @@ env:
   SWIFTPM_ENABLE_MACROS: 1
   SWIFTPM_EXPERIMENTAL_FEATURES: Macros
   SWIFT_BUILD_ENABLE_PLUGIN_AUTO_TRUST: 1
+  ENABLE_USER_SCRIPT_SANDBOXING: NO
 
 jobs:
-  build:
-    name: Build
+  build-and-test:
+    name: Build & Test
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -29,43 +30,13 @@ jobs:
         with:
           xcode-version: "16.2"
 
-      - name: Trust Xcode plugins
+      - name: Trust Xcode plugins and macros
         run: |
           defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
           defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
+          defaults write com.apple.dt.Xcode IDEPackageSupportUseBuiltinSCM YES
 
-      - name: Build for testing (macOS)
-        run: |
-          xcodebuild build-for-testing \
-            -project AuralystApp.xcodeproj \
-            -scheme "$SCHEME" \
-            -destination "platform=macOS" \
-            -skipPackagePluginValidation \
-            -skipMacroValidation \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            SWIFT_ENABLE_EXPERIMENTAL_FEATURES=Macros \
-            OTHER_SWIFT_FLAGS='$(inherited) -enable-experimental-feature Macros -enable-experimental-feature CompilerPlugin'
-
-  test:
-    name: Test
-    runs-on: macos-15
-    needs: build
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: "16.2"
-
-      - name: Trust Xcode plugins
-        run: |
-          defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
-          defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
-
-      - name: Run unit tests (macOS)
+      - name: Build and run unit tests
         run: |
           xcodebuild test \
             -project AuralystApp.xcodeproj \
@@ -78,6 +49,7 @@ jobs:
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
+            ENABLE_USER_SCRIPT_SANDBOXING=NO \
             SWIFT_ENABLE_EXPERIMENTAL_FEATURES=Macros \
             OTHER_SWIFT_FLAGS='$(inherited) -enable-experimental-feature Macros -enable-experimental-feature CompilerPlugin'
 
@@ -99,15 +71,16 @@ jobs:
         with:
           xcode-version: "16.2"
 
-      - name: Trust Xcode plugins
+      - name: Trust Xcode plugins and macros
         run: |
           defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
           defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
+          defaults write com.apple.dt.Xcode IDEPackageSupportUseBuiltinSCM YES
 
       - name: Install xcpretty
         run: gem install xcpretty
 
-      - name: Build and analyze (macOS)
+      - name: Build and analyze
         run: |
           set -o pipefail
           xcodebuild clean build analyze \
@@ -119,6 +92,7 @@ jobs:
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
+            ENABLE_USER_SCRIPT_SANDBOXING=NO \
             SWIFT_ENABLE_EXPERIMENTAL_FEATURES=Macros \
             OTHER_SWIFT_FLAGS='$(inherited) -enable-experimental-feature Macros -enable-experimental-feature CompilerPlugin' \
             2>&1 | xcpretty && exit ${PIPESTATUS[0]}
