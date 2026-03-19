@@ -22,77 +22,75 @@ struct MedicationsView: View {
 
     init(journal: SQLiteJournal, store: StoreOf<MedicationsFeature>) {
         self.store = store
-        self._medications = FetchAll(SQLiteMedication.where { $0.journalID == journal.id })
+        self._medications = FetchAll(SQLiteMedication.where { $0.journalID.eq(journal.id) })
     }
 
     var body: some View {
-        WithViewStore(store, observe: { $0 }) { viewStore in
-            NavigationStack {
-                List {
-                    if medications.isEmpty {
-                        Section {
-                            VStack(spacing: 12) {
-                                Text("No medications yet")
-                                    .font(.headline)
-                                    .foregroundStyle(.secondary)
+        NavigationStack {
+            List {
+                if medications.isEmpty {
+                    Section {
+                        VStack(spacing: 12) {
+                            Text("No medications yet")
+                                .font(.headline)
+                                .foregroundStyle(.secondary)
 
-                                Text("Add your first medication to start tracking doses and schedules.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .multilineTextAlignment(.center)
-                            }
-                            .padding(.vertical)
+                            Text("Add your first medication to start tracking doses and schedules.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
                         }
-                    } else {
-                        ForEach(medications) { medication in
-                            medicationRow(medication, viewStore: viewStore)
-                                .swipeActions(edge: .trailing) {
-                                    Button(role: .destructive) {
-                                        viewStore.send(.deleteMedication(medication.id))
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
+                        .padding(.vertical)
+                    }
+                } else {
+                    ForEach(medications) { medication in
+                        medicationRow(medication, store: store)
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    store.send(.deleteMedication(medication.id))
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
                                 }
+                            }
+                    }
+                }
+            }
+            .navigationTitle("Medications")
+            .inlineNavigationTitleDisplay()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Add") { store.send(.addTapped) }
+                }
+            }
+            .sheet(
+                item: Binding(
+                    get: { store.editorMode },
+                    set: { store.send(.setEditorMode($0)) }
+                )
+            ) { mode in
+                switch mode {
+                case .create:
+                    MedicationEditorView(
+                        store: Store(
+                            initialState: MedicationEditorFeature.State(journalID: store.journal.id)
+                        ) {
+                            MedicationEditorFeature()
                         }
-                    }
-                }
-                .navigationTitle("Medications")
-                .inlineNavigationTitleDisplay()
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Done") { dismiss() }
-                    }
-                    ToolbarItem(placement: .primaryAction) {
-                        Button("Add") { viewStore.send(.addTapped) }
-                    }
-                }
-                .sheet(
-                    item: viewStore.binding(
-                        get: \.editorMode,
-                        send: MedicationsFeature.Action.setEditorMode
                     )
-                ) { mode in
-                    switch mode {
-                    case .create:
-                        MedicationEditorView(
-                            store: Store(
-                                initialState: MedicationEditorFeature.State(journalID: viewStore.journal.id)
-                            ) {
-                                MedicationEditorFeature()
-                            }
-                        )
-                    case .edit(let medicationID):
-                        MedicationEditorView(
-                            store: Store(
-                                initialState: MedicationEditorFeature.State(
-                                    journalID: viewStore.journal.id,
-                                    medicationID: medicationID
-                                )
-                            ) {
-                                MedicationEditorFeature()
-                            }
-                        )
-                    }
+                case .edit(let medicationID):
+                    MedicationEditorView(
+                        store: Store(
+                            initialState: MedicationEditorFeature.State(
+                                journalID: store.journal.id,
+                                medicationID: medicationID
+                            )
+                        ) {
+                            MedicationEditorFeature()
+                        }
+                    )
                 }
             }
         }
@@ -102,7 +100,7 @@ struct MedicationsView: View {
 @MainActor
 private func medicationRow(
     _ medication: SQLiteMedication,
-    viewStore: ViewStore<MedicationsFeature.State, MedicationsFeature.Action>
+    store: StoreOf<MedicationsFeature>
 ) -> some View {
     HStack(alignment: .top) {
         VStack(alignment: .leading, spacing: 4) {
@@ -133,7 +131,7 @@ private func medicationRow(
         Spacer()
 
         Button("Edit") {
-            viewStore.send(.editTapped(medication.id))
+            store.send(.editTapped(medication.id))
         }
         .buttonStyle(.bordered)
         .controlSize(.small)

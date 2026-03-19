@@ -60,6 +60,7 @@ jobs:
             -scheme "$SCHEME" \
             -destination "platform=iOS Simulator,name=$DEVICE" \
             -only-testing:AuralystAppTests \
+            -enableCodeCoverage YES \
             -resultBundlePath TestResults.xcresult \
             -skipPackagePluginValidation \
             CODE_SIGN_IDENTITY="-" \
@@ -68,6 +69,36 @@ jobs:
             ENABLE_USER_SCRIPT_SANDBOXING=NO \
             SWIFT_ENABLE_EXPERIMENTAL_FEATURES=Macros \
             OTHER_SWIFT_FLAGS='$(inherited) -enable-experimental-feature Macros -enable-experimental-feature CompilerPlugin'
+
+      - name: Enforce code coverage gate
+        env:
+          # Coverage gate percentage (0–100). Adjust as coverage improves.
+          # Current baseline is ~31% — the app target includes SwiftUI views,
+          # live CloudKit/SyncEngine code, and preview helpers that are not
+          # reachable from unit tests. 100% of the full target is not achievable
+          # without UI tests.
+          COVERAGE_GATE: "30"
+        run: |
+          COVERAGE=$(xcrun xccov view --report --json TestResults.xcresult \
+            | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          for target in data.get('targets', []):
+              if 'AuralystApp' in target.get('name', ''):
+                  print(f\"{target['lineCoverage'] * 100:.1f}\")
+                  sys.exit(0)
+          print('0.0')
+          ")
+          echo "Code coverage: ${COVERAGE}%  (gate: ${COVERAGE_GATE}%)"
+          python3 -c "
+          cov = float('$COVERAGE')
+          gate = float('$COVERAGE_GATE')
+          if cov < gate:
+              print(f'FAIL: Coverage {cov:.1f}% is below {gate:.0f}% gate')
+              exit(1)
+          else:
+              print(f'PASS: Coverage {cov:.1f}% meets {gate:.0f}% gate')
+          "
 
       - name: Upload test results
         if: failure()
@@ -84,3 +115,5 @@ jobs:
 
       - name: SwiftLint
         uses: norio-nomura/action-swiftlint@3.2.1
+        with:
+          args: --strict

@@ -1,8 +1,6 @@
 import ComposableArchitecture
 import Dependencies
 import Foundation
-import GRDB
-import StructuredQueries
 @preconcurrency import SQLiteData
 
 @Reducer
@@ -92,72 +90,16 @@ struct MedicationEditorFeature {
                 return .none
 
             case .task:
-                guard let medicationID = state.medicationID, !state.isLoading else { return .none }
+                guard let medicationID = state.medicationID,
+                      !state.isLoading else { return .none }
                 state.isLoading = true
                 return .run { send in
                     await send(
                         .loadResponse(
                             TaskResult {
-                                try database.read { db -> LoadedMedication? in
-                                    guard let row = try Row.fetchOne(
-                                        db,
-                                        sql: """
-                                            SELECT name, defaultAmount, defaultUnit, isAsNeeded, useCase, notes
-                                            FROM sqLiteMedication
-                                            WHERE id = ?
-                                        """,
-                                        arguments: [medicationID]
-                                    ) else {
-                                        return nil
-                                    }
-
-                                    let name: String = row["name"]
-                                    let defaultAmount: Double? = row["defaultAmount"]
-                                    let defaultUnit: String? = row["defaultUnit"]
-                                    let isAsNeeded: Bool = (row["isAsNeeded"] as Bool?) ?? false
-                                    let useCase: String? = row["useCase"]
-                                    let notes: String? = row["notes"]
-
-                                    let scheduleRows = try Row.fetchAll(
-                                        db,
-                                        sql: """
-                                            SELECT id, label, amount, unit, hour, minute, sortOrder
-                                            FROM sqLiteMedicationSchedule
-                                            WHERE medicationID = ?
-                                            ORDER BY sortOrder ASC, hour ASC, minute ASC
-                                        """,
-                                        arguments: [medicationID]
-                                    )
-
-                                    let drafts: [ScheduleDraft] = scheduleRows.enumerated().map { index, row in
-                                        let scheduleID: UUID = row["id"]
-                                        let label: String = row["label"] ?? ""
-                                        let amount: Double? = row["amount"]
-                                        let unit: String = row["unit"] ?? ""
-                                        let hour: Int = Int(row["hour"] as Int16? ?? 8)
-                                        let minute: Int = Int(row["minute"] as Int16? ?? 0)
-                                        var components = DateComponents()
-                                        components.hour = hour
-                                        components.minute = minute
-                                        let time = Calendar.current.date(from: components) ?? Date()
-                                        return ScheduleDraft(
-                                            existingID: scheduleID,
-                                            label: label,
-                                            amount: amount.map { (floor($0) == $0) ? String(Int($0)) : String($0) } ?? "",
-                                            unit: unit,
-                                            time: time,
-                                            sortOrder: Int16(index)
-                                        )
-                                    }
-
-                                    return LoadedMedication(
-                                        name: name,
-                                        defaultAmount: defaultAmount,
-                                        defaultUnit: defaultUnit,
-                                        isAsNeeded: isAsNeeded,
-                                        useCase: useCase,
-                                        notes: notes,
-                                        drafts: drafts
+                                try database.read { db in
+                                    try loadMedication(
+                                        medicationID, from: db
                                     )
                                 }
                             }
@@ -193,7 +135,9 @@ struct MedicationEditorFeature {
                     draft.label = "Morning"
                 } else if state.scheduleDrafts.count == 1 {
                     draft.label = "Evening"
-                    draft.time = Calendar.current.date(bySettingHour: 20, minute: 0, second: 0, of: Date()) ?? draft.time
+                    draft.time = Calendar.current.date(
+                        bySettingHour: 20, minute: 0, second: 0, of: Date()
+                    ) ?? draft.time
                 }
                 state.scheduleDrafts.append(draft)
                 return .none
@@ -298,146 +242,6 @@ struct MedicationEditorFeature {
                 state.didFinish = false
                 return .none
             }
-        }
-    }
-}
-
-private func renumberSortOrders(state: inout MedicationEditorFeature.State) {
-    for index in state.scheduleDrafts.indices {
-        state.scheduleDrafts[index].sortOrder = Int16(index)
-    }
-}
-
-private struct MedicationUpsertParams {
-    let journalID: UUID
-    let medicationID: UUID?
-    let name: String
-    let amount: Double?
-    let unit: String?
-    let isAsNeeded: Bool
-    let useCase: String?
-    let notes: String?
-    let timestamp: Date
-}
-
-private func upsertMedication(in db: Database, params: MedicationUpsertParams) throws -> UUID {
-    let journalID = params.journalID
-    let medicationID = params.medicationID
-    let name = params.name
-    let amount = params.amount
-    let unit = params.unit
-    let isAsNeeded = params.isAsNeeded
-    let useCase = params.useCase
-    let notes = params.notes
-    let timestamp = params.timestamp
-    if let medID = medicationID {
-        if let existing = try SQLiteMedication.find(medID).fetchOne(db) {
-            let updated = SQLiteMedication(
-                id: medID,
-                journalID: existing.journalID,
-                name: name,
-                defaultAmount: amount,
-                defaultUnit: unit,
-                isAsNeeded: isAsNeeded,
-                useCase: useCase,
-                notes: notes,
-                createdAt: existing.createdAt,
-                updatedAt: timestamp
-            )
-            try SQLiteMedication.update(updated).execute(db)
-            return medID
-        }
-
-        let newMedication = SQLiteMedication(
-            id: medID,
-            journalID: journalID,
-            name: name,
-            defaultAmount: amount,
-            defaultUnit: unit,
-            isAsNeeded: isAsNeeded,
-            useCase: useCase,
-            notes: notes,
-            createdAt: timestamp,
-            updatedAt: timestamp
-        )
-        try SQLiteMedication.insert { newMedication }.execute(db)
-        return medID
-    } else {
-        let medID = UUID()
-        let medication = SQLiteMedication(
-            id: medID,
-            journalID: journalID,
-            name: name,
-            defaultAmount: amount,
-            defaultUnit: unit,
-            isAsNeeded: isAsNeeded,
-            useCase: useCase,
-            notes: notes,
-            createdAt: timestamp,
-            updatedAt: timestamp
-        )
-        try SQLiteMedication.insert { medication }.execute(db)
-        return medID
-    }
-}
-
-private func syncSchedules(in db: Database, medicationID: UUID, drafts: inout [MedicationEditorFeature.ScheduleDraft]) throws {
-    let existingSchedules = try SQLiteMedicationSchedule
-        .where { $0.medicationID.eq(medicationID) }
-        .fetchAll(db)
-    let existingIDs = Set(existingSchedules.map(\.id))
-    let existingByID = Dictionary(uniqueKeysWithValues: existingSchedules.map { ($0.id, $0) })
-    var retainedIDs = Set<UUID>()
-
-    for index in drafts.indices {
-        let draft = drafts[index]
-        let scheduleID = draft.existingID ?? UUID()
-        drafts[index].existingID = scheduleID
-        retainedIDs.insert(scheduleID)
-
-        let amount = Double(draft.amount)
-        let unit = draft.unit.isEmpty ? nil : draft.unit
-        let hour = Int16(Calendar.current.component(.hour, from: draft.time))
-        let minute = Int16(Calendar.current.component(.minute, from: draft.time))
-
-        let sortOrder = Int16(index)
-        if let existing = existingByID[scheduleID] {
-            let updated = SQLiteMedicationSchedule(
-                id: scheduleID,
-                medicationID: medicationID,
-                label: draft.label,
-                amount: amount,
-                unit: unit,
-                cadence: existing.cadence,
-                interval: existing.interval,
-                daysOfWeekMask: existing.daysOfWeekMask,
-                hour: hour,
-                minute: minute,
-                timeZoneIdentifier: existing.timeZoneIdentifier,
-                startDate: existing.startDate,
-                isActive: existing.isActive,
-                sortOrder: sortOrder
-            )
-            try SQLiteMedicationSchedule.update(updated).execute(db)
-        } else {
-            let schedule = SQLiteMedicationSchedule(
-                id: scheduleID,
-                medicationID: medicationID,
-                label: draft.label,
-                amount: amount,
-                unit: unit,
-                hour: hour,
-                minute: minute,
-                sortOrder: sortOrder
-            )
-            try SQLiteMedicationSchedule.insert { schedule }.execute(db)
-        }
-    }
-
-    let idsToDelete = existingIDs.subtracting(retainedIDs)
-    if !idsToDelete.isEmpty {
-        for id in idsToDelete {
-            try SQLiteMedicationSchedule.find(id).delete().execute(db)
         }
     }
 }

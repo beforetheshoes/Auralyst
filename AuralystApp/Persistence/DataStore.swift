@@ -40,8 +40,16 @@ final class DataStore: Observable {
 
     // MARK: - Symptom Entry Operations
 
-    func createSymptomEntry(for journal: SQLiteJournal, severity: Int16, note: String? = nil, timestamp: Date = .now, isMenstruating: Bool = false) throws -> SQLiteSymptomEntry {
-        try databaseClient.createSymptomEntry(journal, severity, note, timestamp, isMenstruating)
+    func createSymptomEntry(
+        for journal: SQLiteJournal,
+        severity: Int16,
+        note: String? = nil,
+        timestamp: Date = .now,
+        isMenstruating: Bool = false
+    ) throws -> SQLiteSymptomEntry {
+        try databaseClient.createSymptomEntry(
+            journal, severity, note, timestamp, isMenstruating
+        )
     }
 
     func fetchSymptomEntry(id: UUID) -> SQLiteSymptomEntry? {
@@ -62,8 +70,15 @@ final class DataStore: Observable {
 
     // MARK: - Collaborator Note Operations
 
-    func createCollaboratorNote(for journal: SQLiteJournal, entry: SQLiteSymptomEntry? = nil, authorName: String? = nil, text: String) throws -> SQLiteCollaboratorNote {
-        try databaseClient.createCollaboratorNote(journal, entry, authorName, text)
+    func createCollaboratorNote(
+        for journal: SQLiteJournal,
+        entry: SQLiteSymptomEntry? = nil,
+        authorName: String? = nil,
+        text: String
+    ) throws -> SQLiteCollaboratorNote {
+        try databaseClient.createCollaboratorNote(
+            journal, entry, authorName, text
+        )
     }
 
     // MARK: - Medication Operations
@@ -72,8 +87,15 @@ final class DataStore: Observable {
         try databaseClient.deleteMedication(medicationID)
     }
 
-    func createMedication(for journal: SQLiteJournal, name: String, defaultAmount: Double? = nil, defaultUnit: String? = nil) -> SQLiteMedication {
-        databaseClient.createMedication(journal, name, defaultAmount, defaultUnit)
+    func createMedication(
+        for journal: SQLiteJournal,
+        name: String,
+        defaultAmount: Double? = nil,
+        defaultUnit: String? = nil
+    ) -> SQLiteMedication {
+        databaseClient.createMedication(
+            journal, name, defaultAmount, defaultUnit
+        )
     }
 
     func fetchMedications(for journal: SQLiteJournal) -> [SQLiteMedication] {
@@ -82,8 +104,14 @@ final class DataStore: Observable {
 
     // MARK: - Medication Intake Operations
 
-    func createMedicationIntake(for medication: SQLiteMedication, amount: Double? = nil, unit: String? = nil) throws -> SQLiteMedicationIntake {
-        try databaseClient.createMedicationIntake(medication, amount, unit)
+    func createMedicationIntake(
+        for medication: SQLiteMedication,
+        amount: Double? = nil,
+        unit: String? = nil
+    ) throws -> SQLiteMedicationIntake {
+        try databaseClient.createMedicationIntake(
+            medication, amount, unit
+        )
     }
 
     func fetchMedicationIntake(id: UUID) -> SQLiteMedicationIntake? {

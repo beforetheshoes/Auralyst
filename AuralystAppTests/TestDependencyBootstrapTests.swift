@@ -1,5 +1,6 @@
 import Dependencies
 import GRDB
+import os.log
 @preconcurrency import SQLiteData
 import XCTest
 @testable import AuralystApp
@@ -10,7 +11,7 @@ final class TestDependencyBootstrapTests: XCTestCase {
         let wasConfigured = LockIsolated(false)
         let startCount = LockIsolated(0)
 
-        try prepareTestDependencies { dependencies in
+        try prepareTestDependencies(configureSyncEngine: true) { dependencies in
             wasConfigured.withValue { $0 = true }
             dependencies.syncEngine = SyncEngineClient(
                 start: {
@@ -40,7 +41,7 @@ final class TestDependencyBootstrapTests: XCTestCase {
     }
 
     func testAllExpectedTablesAreRegisteredForSync() throws {
-        try prepareTestDependencies()
+        try prepareTestDependencies(configureSyncEngine: true)
 
         @Dependency(\.defaultDatabase) var database
 
@@ -72,9 +73,15 @@ private struct SQLiteDataRecordTypeRow: FetchableRecord, TableRecord {
 }
 
 @MainActor
-func prepareTestDependencies(_ configure: (inout DependencyValues) throws -> Void = { _ in }) throws {
+func prepareTestDependencies(
+    configureSyncEngine: Bool = false,
+    _ configure: (inout DependencyValues) throws -> Void = { _ in }
+) throws {
     try prepareDependencies {
-        try $0.bootstrapDatabase(configureSyncEngine: true)
+        try $0.bootstrapDatabase(configureSyncEngine: configureSyncEngine)
+        $0.databaseClient = buildTestDatabaseClient(
+            database: $0.defaultDatabase
+        )
         $0.date = .constant(Date(timeIntervalSince1970: 1_700_000_000))
         $0.continuousClock = ContinuousClock()
         $0.syncEngine = SyncEngineClient(
@@ -84,4 +91,23 @@ func prepareTestDependencies(_ configure: (inout DependencyValues) throws -> Voi
         )
         try configure(&$0)
     }
+}
+
+func buildTestDatabaseClient(
+    database: any DatabaseWriter
+) -> DatabaseClient {
+    let logger = Logger(
+        subsystem: "com.yourteam.Auralyst",
+        category: "DatabaseClient.test"
+    )
+    var client = DatabaseClient.stub
+    assignJournalOps(to: &client, database: database, logger: logger)
+    assignEntryCreateOps(to: &client, database: database, logger: logger)
+    assignEntryMutateOps(to: &client, database: database, logger: logger)
+    assignNoteOps(to: &client, database: database, logger: logger)
+    assignMedOps(to: &client, database: database, logger: logger)
+    assignIntakeCreateOps(to: &client, database: database, logger: logger)
+    assignIntakeMutateOps(to: &client, database: database, logger: logger)
+
+    return client
 }

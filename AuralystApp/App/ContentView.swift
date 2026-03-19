@@ -13,93 +13,91 @@ struct ContentView: View {
     @State private var addEntryStore: StoreOf<AddEntryFeature>?
 
     var body: some View {
-        WithViewStore(store, observe: { $0 }) { viewStore in
-            NavigationStack {
-                ZStack {
-                    content(viewStore: viewStore)
-                    if let overlay = overlayState(viewStore: viewStore) {
-                        overlayView(for: overlay, viewStore: viewStore)
-                            .transition(.opacity)
-                            .accessibilityIdentifier("sync-status-content-unavailable")
-                            .padding(.horizontal, 24)
-                    }
+        NavigationStack {
+            ZStack {
+                content()
+                if let overlay = overlayState() {
+                    overlayView(for: overlay)
+                        .transition(.opacity)
+                        .accessibilityIdentifier("sync-status-content-unavailable")
+                        .padding(.horizontal, 24)
                 }
-                .toolbar { titleToolbar(viewStore: viewStore) }
             }
-            .onAppear {
-                viewStore.send(.journalsChanged(isEmpty: journals.isEmpty))
-                viewStore.send(.entriesCountChanged(entries.count))
-                viewStore.send(.syncPhaseChanged(viewStore.syncStatus.status.phase))
-            }
-            .onChange(of: journals.isEmpty) { _, _ in viewStore.send(.journalsChanged(isEmpty: journals.isEmpty)) }
-            .onChange(of: entries.count) { _, _ in viewStore.send(.entriesCountChanged(entries.count)) }
-            .onChange(of: viewStore.showingAddEntry) { _, isPresented in
-                guard !isPresented else { return }
-                addEntryStore = nil
-            }
-            .onChange(of: viewStore.syncStatus.status.phase) { _, phase in
-                viewStore.send(.syncPhaseChanged(phase))
-            }
-            .sheet(
-                isPresented: viewStore.binding(
-                    get: \.showingAddEntry,
-                    send: AppFeature.Action.setShowingAddEntry
-                )
-            ) {
-                if let journal = primaryJournal {
-                    if let store = addEntryStore {
-                        AddEntryView(store: store)
-                    } else {
-                        let store = Store(initialState: AddEntryFeature.State(journalID: journal.id)) {
-                            AddEntryFeature()
+            .toolbar { titleToolbar() }
+        }
+        .onAppear {
+            store.send(.journalsChanged(isEmpty: journals.isEmpty))
+            store.send(.entriesCountChanged(entries.count))
+            store.send(.syncPhaseChanged(store.syncStatus.status.phase))
+        }
+        .onChange(of: journals.isEmpty) { _, _ in store.send(.journalsChanged(isEmpty: journals.isEmpty)) }
+        .onChange(of: entries.count) { _, _ in store.send(.entriesCountChanged(entries.count)) }
+        .onChange(of: store.showingAddEntry) { _, isPresented in
+            guard !isPresented else { return }
+            addEntryStore = nil
+        }
+        .onChange(of: store.syncStatus.status.phase) { _, phase in
+            store.send(.syncPhaseChanged(phase))
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { store.showingAddEntry },
+                set: { store.send(.setShowingAddEntry($0)) }
+            )
+        ) {
+            if let journal = primaryJournal {
+                if let store = addEntryStore {
+                    AddEntryView(store: store)
+                } else {
+                    let store = Store(initialState: AddEntryFeature.State(journalID: journal.id)) {
+                        AddEntryFeature()
+                    }
+                    AddEntryView(store: store)
+                        .onAppear {
+                            addEntryStore = store
                         }
-                        AddEntryView(store: store)
-                            .onAppear {
-                                addEntryStore = store
-                            }
-                    }
                 }
             }
-            .sheet(
-                item: viewStore.binding(
-                    get: \.shareManagementJournal,
-                    send: AppFeature.Action.setShareManagementJournal
-                )
-            ) { journal in
-                ShareManagementView(
-                    store: Store(initialState: ShareManagementFeature.State(journal: journal)) {
-                        ShareManagementFeature()
-                    }
-                )
-            }
-            .sheet(
-                isPresented: viewStore.binding(
-                    get: \.showingExport,
-                    send: AppFeature.Action.setShowingExport
-                )
-            ) {
-                if let journal = primaryJournal {
-                    ExportView(
-                        store: Store(initialState: ExportFeature.State(journal: journal)) {
-                            ExportFeature()
-                        }
-                    )
+        }
+        .sheet(
+            item: Binding(
+                get: { store.shareManagementJournal },
+                set: { store.send(.setShareManagementJournal($0)) }
+            )
+        ) { journal in
+            ShareManagementView(
+                store: Store(initialState: ShareManagementFeature.State(journal: journal)) {
+                    ShareManagementFeature()
                 }
-            }
-            .sheet(
-                isPresented: viewStore.binding(
-                    get: \.showingImport,
-                    send: AppFeature.Action.setShowingImport
-                )
-            ) {
-                ImportView(
-                    store: Store(
-                        initialState: ImportFeature.State(hasExistingJournal: primaryJournal != nil)
-                    ) {
-                        ImportFeature()
+            )
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { store.showingExport },
+                set: { store.send(.setShowingExport($0)) }
+            )
+        ) {
+            if let journal = primaryJournal {
+                ExportView(
+                    store: Store(initialState: ExportFeature.State(journal: journal)) {
+                        ExportFeature()
                     }
                 )
             }
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { store.showingImport },
+                set: { store.send(.setShowingImport($0)) }
+            )
+        ) {
+            ImportView(
+                store: Store(
+                    initialState: ImportFeature.State(hasExistingJournal: primaryJournal != nil)
+                ) {
+                    ImportFeature()
+                }
+            )
         }
     }
 }
@@ -123,17 +121,17 @@ struct ContentView: View {
 }
 
 private extension ContentView {
-    func overlayState(viewStore: ViewStore<AppFeature.State, AppFeature.Action>) -> InitialOverlayState? {
-        initialOverlayState(state: viewStore.state)
+    func overlayState() -> InitialOverlayState? {
+        initialOverlayState(state: store.state)
     }
 
     @ToolbarContentBuilder
-    func titleToolbar(viewStore: ViewStore<AppFeature.State, AppFeature.Action>) -> some ToolbarContent {
+    func titleToolbar() -> some ToolbarContent {
         ToolbarItem(placement: .principal) {
             HStack(spacing: 6) {
                 Text("Auralyst")
                     .font(.headline.weight(.semibold))
-                if let presentation = indicatorPresentation(viewStore: viewStore) {
+                if let presentation = indicatorPresentation() {
                     SyncStatusDot(presentation: presentation)
                 }
             }
@@ -141,15 +139,15 @@ private extension ContentView {
     }
 
     @ViewBuilder
-    func content(viewStore: ViewStore<AppFeature.State, AppFeature.Action>) -> some View {
+    func content() -> some View {
         Group {
             if let journal = primaryJournal {
                 JournalEntriesView(
                     journal: journal,
-                    onAddEntry: { viewStore.send(.addEntryTapped) },
-                    onShare: { viewStore.send(.shareManagementTapped(journal)) },
-                    onExport: { viewStore.send(.exportTapped) },
-                    onImport: { viewStore.send(.importTapped) }
+                    onAddEntry: { store.send(.addEntryTapped) },
+                    onShare: { store.send(.shareManagementTapped(journal)) },
+                    onExport: { store.send(.exportTapped) },
+                    onImport: { store.send(.importTapped) }
                 )
             } else {
                 VStack(spacing: 20) {
@@ -161,13 +159,13 @@ private extension ContentView {
                         .foregroundStyle(.secondary)
 
                     Button("Create Journal") {
-                        viewStore.send(.createJournalTapped)
+                        store.send(.createJournalTapped)
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(false)
 
                     Button("Import Journal") {
-                        viewStore.send(.importTapped)
+                        store.send(.importTapped)
                     }
                     .buttonStyle(.bordered)
                 }
@@ -177,7 +175,7 @@ private extension ContentView {
     }
 
     @ViewBuilder
-    func overlayView(for state: InitialOverlayState, viewStore: ViewStore<AppFeature.State, AppFeature.Action>) -> some View {
+    func overlayView(for state: InitialOverlayState) -> some View {
         switch state {
         case .syncing:
             ContentUnavailableView {
@@ -201,7 +199,7 @@ private extension ContentView {
                     .foregroundStyle(.secondary)
             } actions: {
                 Button("Retry") {
-                    viewStore.send(.syncStatus(.retryTapped))
+                    store.send(.syncStatus(.retryTapped))
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -213,9 +211,9 @@ private extension ContentView {
         return entries.contains(where: { $0.journalID == journal.id })
     }
 
-    func indicatorPresentation(viewStore: ViewStore<AppFeature.State, AppFeature.Action>) -> SyncIndicatorPresentation? {
-        guard overlayState(viewStore: viewStore) == nil else { return nil }
-        switch viewStore.syncStatus.status.phase {
+    func indicatorPresentation() -> SyncIndicatorPresentation? {
+        guard overlayState() == nil else { return nil }
+        switch store.syncStatus.status.phase {
         case .syncing:
             return SyncIndicatorPresentation(
                 color: .yellow,
@@ -228,7 +226,7 @@ private extension ContentView {
                 color: .green,
                 identifier: "sync-status-dot-success",
                 accessibilityLabel: "Sync complete",
-                helpText: successHelpText(viewStore: viewStore)
+                helpText: successHelpText()
             )
         case .error(let issue):
             return SyncIndicatorPresentation(
@@ -242,8 +240,8 @@ private extension ContentView {
         }
     }
 
-    func successHelpText(viewStore: ViewStore<AppFeature.State, AppFeature.Action>) -> String {
-        guard let last = viewStore.syncStatus.status.lastSuccessfulSync else {
+    func successHelpText() -> String {
+        guard let last = store.syncStatus.status.lastSuccessfulSync else {
             return "Cloud sync has completed."
         }
         let relative = SyncIndicatorPresentation.relativeFormatter.localizedString(for: last, relativeTo: Date())

@@ -4,89 +4,126 @@ import Foundation
 
 extension DataImporter {
     static func parseCSV(data: Data) throws -> ImportPayload {
-        guard let csvString = String(data: data, encoding: .utf8) else {
-            throw ImportError.invalidCSV("Unable to decode file as UTF-8.")
+        guard let csvString = String(data: data, encoding: .utf8)
+        else {
+            throw ImportError.invalidCSV(
+                "Unable to decode file as UTF-8."
+            )
         }
 
-        var journal: ImportPayload.Journal?
-        var entries: [ImportPayload.SymptomEntry] = []
-        var collaboratorNotes: [ImportPayload.CollaboratorNote] = []
-        var medications: [ImportPayload.Medication] = []
-        var intakes: [ImportPayload.Intake] = []
-        var schedules: [ImportPayload.Schedule] = []
-
+        var state = CSVParseState()
         let lines = splitCSVRows(csvString)
-        var section: String?
-        var headers: [String] = []
 
         for rawLine in lines {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
-            if line.isEmpty {
-                section = nil
-                headers = []
-                continue
-            }
-
-            if isSectionHeader(line) {
-                section = line
-                headers = []
-                continue
-            }
-
-            guard let section else {
-                continue
-            }
-
-            let values = try parseCSVLine(line)
-            if headers.isEmpty {
-                headers = values
-                continue
-            }
-
-            let row = makeRow(headers: headers, values: values)
-            switch section {
-            case "journal":
-                if journal == nil {
-                    journal = try parseJournal(row)
-                }
-            case "summary":
-                continue
-            case "symptom_entries":
-                entries.append(try parseSymptomEntry(row))
-                if journal == nil, let journalID = uuid(from: row["journal_id"]) {
-                    journal = ImportPayload.Journal(id: journalID, createdAt: Date())
-                }
-            case "collaborator_notes":
-                collaboratorNotes.append(try parseCollaboratorNote(row))
-                if journal == nil, let journalID = uuid(from: row["journal_id"]) {
-                    journal = ImportPayload.Journal(id: journalID, createdAt: Date())
-                }
-            case "medications":
-                medications.append(try parseMedication(row))
-                if journal == nil, let journalID = uuid(from: row["journal_id"]) {
-                    journal = ImportPayload.Journal(id: journalID, createdAt: Date())
-                }
-            case "medication_intakes":
-                intakes.append(try parseIntake(row))
-            case "medication_schedules":
-                schedules.append(try parseSchedule(row))
-            default:
-                continue
-            }
+            try processCSVLine(line, state: &state)
         }
 
-        guard let journal else {
-            throw ImportError.invalidCSV("No journal identifier found in CSV.")
+        guard let journal = state.journal else {
+            throw ImportError.invalidCSV(
+                "No journal identifier found in CSV."
+            )
         }
 
         return ImportPayload(
             journal: journal,
-            entries: entries,
-            collaboratorNotes: collaboratorNotes,
-            medications: medications,
-            intakes: intakes,
-            schedules: schedules
+            entries: state.entries,
+            collaboratorNotes: state.collaboratorNotes,
+            medications: state.medications,
+            intakes: state.intakes,
+            schedules: state.schedules
         )
+    }
+}
+
+// MARK: - CSV Parse State
+
+private struct CSVParseState {
+    var journal: ImportJournal?
+    var entries: [ImportSymptomEntry] = []
+    var collaboratorNotes: [ImportCollaboratorNote] = []
+    var medications: [ImportMedication] = []
+    var intakes: [ImportIntake] = []
+    var schedules: [ImportSchedule] = []
+    var section: String?
+    var headers: [String] = []
+}
+
+// MARK: - Line Processing
+
+extension DataImporter {
+    fileprivate static func processCSVLine(
+        _ line: String,
+        state: inout CSVParseState
+    ) throws {
+        if line.isEmpty {
+            state.section = nil
+            state.headers = []
+            return
+        }
+
+        if isSectionHeader(line) {
+            state.section = line
+            state.headers = []
+            return
+        }
+
+        guard let section = state.section else { return }
+
+        let values = try parseCSVLine(line)
+        if state.headers.isEmpty {
+            state.headers = values
+            return
+        }
+
+        let row = makeRow(headers: state.headers, values: values)
+        try routeCSVRow(
+            section: section, row: row, state: &state
+        )
+    }
+
+    fileprivate static func routeCSVRow(
+        section: String,
+        row: [String: String],
+        state: inout CSVParseState
+    ) throws {
+        switch section {
+        case "journal":
+            if state.journal == nil {
+                state.journal = try parseJournal(row)
+            }
+        case "summary":
+            break
+        case "symptom_entries":
+            state.entries.append(try parseSymptomEntry(row))
+            inferJournal(from: row, state: &state)
+        case "collaborator_notes":
+            state.collaboratorNotes.append(
+                try parseCollaboratorNote(row)
+            )
+            inferJournal(from: row, state: &state)
+        case "medications":
+            state.medications.append(try parseMedication(row))
+            inferJournal(from: row, state: &state)
+        case "medication_intakes":
+            state.intakes.append(try parseIntake(row))
+        case "medication_schedules":
+            state.schedules.append(try parseSchedule(row))
+        default:
+            break
+        }
+    }
+
+    private static func inferJournal(
+        from row: [String: String],
+        state: inout CSVParseState
+    ) {
+        if state.journal == nil,
+           let journalID = uuid(from: row["journal_id"]) {
+            state.journal = ImportJournal(
+                id: journalID, createdAt: Date()
+            )
+        }
     }
 
     static func isSectionHeader(_ line: String) -> Bool {
@@ -100,7 +137,9 @@ extension DataImporter {
         }
     }
 
-    static func makeRow(headers: [String], values: [String]) -> [String: String] {
+    static func makeRow(
+        headers: [String], values: [String]
+    ) -> [String: String] {
         var row: [String: String] = [:]
         for (index, header) in headers.enumerated() {
             row[header] = index < values.count ? values[index] : ""
@@ -116,41 +155,69 @@ extension DataImporter {
 
         while let char = iterator.next() {
             if inQuotes {
-                if char == "\"" {
-                    if let next = iterator.next() {
-                        if next == "\"" {
-                            current.append("\"")
-                        } else if next == "," {
-                            inQuotes = false
-                            results.append(current)
-                            current = ""
-                        } else {
-                            inQuotes = false
-                            current.append(next)
-                        }
-                    } else {
-                        inQuotes = false
-                    }
-                } else {
-                    current.append(char)
-                }
+                parseQuotedChar(
+                    char, iterator: &iterator,
+                    inQuotes: &inQuotes,
+                    current: &current, results: &results
+                )
             } else {
-                if char == "," {
-                    results.append(current)
-                    current = ""
-                } else if char == "\"" {
-                    inQuotes = true
-                } else {
-                    current.append(char)
-                }
+                parseUnquotedChar(
+                    char, inQuotes: &inQuotes,
+                    current: &current, results: &results
+                )
             }
         }
 
         results.append(current)
         if inQuotes {
-            throw ImportError.invalidCSV("Unterminated quoted field: \(line)")
+            throw ImportError.invalidCSV(
+                "Unterminated quoted field: \(line)"
+            )
         }
         return results
+    }
+
+    private static func parseQuotedChar(
+        _ char: Character,
+        iterator: inout String.Iterator,
+        inQuotes: inout Bool,
+        current: inout String,
+        results: inout [String]
+    ) {
+        if char == "\"" {
+            if let next = iterator.next() {
+                if next == "\"" {
+                    current.append("\"")
+                } else if next == "," {
+                    inQuotes = false
+                    results.append(current)
+                    current = ""
+                } else {
+                    inQuotes = false
+                    current.append(next)
+                }
+            } else {
+                inQuotes = false
+            }
+        } else {
+            current.append(char)
+        }
+    }
+
+    private static func parseUnquotedChar(
+        _ char: Character,
+        inQuotes: inout Bool,
+        current: inout String,
+        results: inout [String]
+    ) {
+        if char == "," {
+            results.append(current)
+            current = ""
+        } else if char == "\"" {
+            inQuotes = true
+        } else {
+            current.append(char)
+        }
     }
 
     static func splitCSVRows(_ content: String) -> [String] {
@@ -163,7 +230,9 @@ extension DataImporter {
         while index < characters.count {
             let char = characters[index]
             if char == "\"" {
-                if inQuotes, index + 1 < characters.count, characters[index + 1] == "\"" {
+                if inQuotes,
+                   index + 1 < characters.count,
+                   characters[index + 1] == "\"" {
                     current.append("\"")
                     current.append("\"")
                     index += 2
@@ -181,7 +250,9 @@ extension DataImporter {
                     rows.append(current)
                     current = ""
                 }
-                if char == "\r", index + 1 < characters.count, characters[index + 1] == "\n" {
+                if char == "\r",
+                   index + 1 < characters.count,
+                   characters[index + 1] == "\n" {
                     index += 2
                 } else {
                     index += 1
@@ -200,175 +271,4 @@ extension DataImporter {
         return rows
     }
 
-    // MARK: - Row Parsers
-
-    static func parseSymptomEntry(_ row: [String: String]) throws -> ImportPayload.SymptomEntry {
-        guard let id = uuid(from: row["id"]),
-              let journalID = uuid(from: row["journal_id"]),
-              let timestamp = date(from: row["timestamp"]),
-              let severity = int(from: row["severity"]) else {
-            throw ImportError.invalidCSV("Invalid symptom entry row.")
-        }
-
-        return ImportPayload.SymptomEntry(
-            id: id,
-            timestamp: timestamp,
-            journalID: journalID,
-            severity: severity,
-            headache: int(from: row["headache"]),
-            nausea: int(from: row["nausea"]),
-            anxiety: int(from: row["anxiety"]),
-            isMenstruating: bool(from: row["isMenstruating"]),
-            note: emptyToNil(row["note"]),
-            sentimentLabel: emptyToNil(row["sentimentLabel"]),
-            sentimentScore: double(from: row["sentimentScore"])
-        )
-    }
-
-    static func parseJournal(_ row: [String: String]) throws -> ImportPayload.Journal {
-        guard let id = uuid(from: row["id"]),
-              let createdAt = date(from: row["createdAt"]) else {
-            throw ImportError.invalidCSV("Invalid journal row.")
-        }
-
-        return ImportPayload.Journal(id: id, createdAt: createdAt)
-    }
-
-    static func parseCollaboratorNote(
-        _ row: [String: String]
-    ) throws -> ImportPayload.CollaboratorNote {
-        guard let id = uuid(from: row["id"]),
-              let journalID = uuid(from: row["journal_id"]),
-              let timestamp = date(from: row["timestamp"]) else {
-            throw ImportError.invalidCSV("Invalid collaborator note row.")
-        }
-
-        return ImportPayload.CollaboratorNote(
-            id: id,
-            journalID: journalID,
-            entryID: uuid(from: row["entry_id"]),
-            authorName: emptyToNil(row["author_name"]),
-            text: emptyToNil(row["text"]),
-            timestamp: timestamp
-        )
-    }
-
-    static func parseMedication(_ row: [String: String]) throws -> ImportPayload.Medication {
-        guard let id = uuid(from: row["id"]),
-              let journalID = uuid(from: row["journal_id"]),
-              let createdAt = date(from: row["createdAt"]),
-              let updatedAt = date(from: row["updatedAt"]) else {
-            throw ImportError.invalidCSV("Invalid medication row.")
-        }
-
-        return ImportPayload.Medication(
-            id: id,
-            journalID: journalID,
-            name: emptyToNil(row["name"]) ?? "",
-            defaultAmount: double(from: row["defaultAmount"]),
-            defaultUnit: emptyToNil(row["defaultUnit"]),
-            isAsNeeded: bool(from: row["isAsNeeded"]),
-            useCase: emptyToNil(row["useCase"]),
-            notes: emptyToNil(row["notes"]),
-            createdAt: createdAt,
-            updatedAt: updatedAt
-        )
-    }
-
-    static func parseIntake(_ row: [String: String]) throws -> ImportPayload.Intake {
-        guard let id = uuid(from: row["id"]),
-              let medicationID = uuid(from: row["medication_id"]),
-              let timestamp = date(from: row["timestamp"]) else {
-            throw ImportError.invalidCSV("Invalid intake row.")
-        }
-
-        return ImportPayload.Intake(
-            id: id,
-            medicationID: medicationID,
-            entryID: uuid(from: row["entry_id"]),
-            scheduleID: uuid(from: row["schedule_id"]),
-            amount: double(from: row["amount"]),
-            unit: emptyToNil(row["unit"]),
-            timestamp: timestamp,
-            scheduledDate: date(from: row["scheduledDate"]),
-            origin: emptyToNil(row["origin"]),
-            notes: emptyToNil(row["notes"])
-        )
-    }
-
-    static func parseSchedule(_ row: [String: String]) throws -> ImportPayload.Schedule {
-        guard let id = uuid(from: row["id"]),
-              let medicationID = uuid(from: row["medication_id"]),
-              let interval = int(from: row["interval"]),
-              let daysOfWeekMask = int(from: row["daysOfWeekMask"]),
-              let sortOrder = int(from: row["sortOrder"]) else {
-            throw ImportError.invalidCSV("Invalid schedule row.")
-        }
-
-        return ImportPayload.Schedule(
-            id: id,
-            medicationID: medicationID,
-            label: emptyToNil(row["label"]),
-            amount: double(from: row["amount"]),
-            unit: emptyToNil(row["unit"]),
-            cadence: emptyToNil(row["cadence"]),
-            interval: interval,
-            daysOfWeekMask: daysOfWeekMask,
-            hour: int(from: row["hour"]),
-            minute: int(from: row["minute"]),
-            timeZoneIdentifier: emptyToNil(row["timeZoneIdentifier"]),
-            startDate: date(from: row["startDate"]),
-            isActive: bool(from: row["isActive"]),
-            sortOrder: sortOrder
-        )
-    }
-
-    // MARK: - Primitive Helpers
-
-    static func parseISO8601Date(_ value: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: value) {
-            return date
-        }
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: value)
-    }
-
-    static func date(from value: String?) -> Date? {
-        guard let value, !value.isEmpty else { return nil }
-        return parseISO8601Date(value)
-    }
-
-    static func uuid(from value: String?) -> UUID? {
-        guard let value, !value.isEmpty else { return nil }
-        return UUID(uuidString: value)
-    }
-
-    static func int(from value: String?) -> Int? {
-        guard let value, !value.isEmpty else { return nil }
-        return Int(value)
-    }
-
-    static func double(from value: String?) -> Double? {
-        guard let value, !value.isEmpty else { return nil }
-        return Double(value)
-    }
-
-    static func bool(from value: String?) -> Bool? {
-        guard let value, !value.isEmpty else { return nil }
-        switch value.lowercased() {
-        case "true":
-            return true
-        case "false":
-            return false
-        default:
-            return nil
-        }
-    }
-
-    static func emptyToNil(_ value: String?) -> String? {
-        guard let value, !value.isEmpty else { return nil }
-        return value
-    }
 }

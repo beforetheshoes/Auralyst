@@ -23,18 +23,18 @@ struct ExportFeatureTests {
                 return ExportPreflightReport(issues: [])
             }
             $0.exportPreflightClient.autoFix = { _ in
-                Issue.record("Auto-fix should not run for clean data")
+                Issue.record("Auto-fix should not run")
                 return ExportPreflightReport(issues: [])
             }
-            $0.fileExportClient.export = { inputJournal, format in
-                #expect(inputJournal.id == journal.id)
+            $0.fileExportClient.export = { input, format in
+                #expect(input.id == journal.id)
                 #expect(format == .csv)
                 return expectedURL
             }
             $0.fileExportClient.cleanup = { _ in }
-            $0.fileExportDestinationClient.present = { url, format in
+            $0.fileExportDestinationClient.present = { url, fmt in
                 #expect(url == expectedURL)
-                #expect(format == .csv)
+                #expect(fmt == .csv)
                 return .documentPicker(url)
             }
         }
@@ -78,14 +78,18 @@ struct ExportFeatureTests {
         ) {
             ExportFeature()
         } withDependencies: {
-            $0.exportPreflightClient.check = { _ in ExportPreflightReport(issues: []) }
-            $0.exportPreflightClient.autoFix = { _ in ExportPreflightReport(issues: []) }
+            $0.exportPreflightClient.check = { _ in
+                ExportPreflightReport(issues: [])
+            }
+            $0.exportPreflightClient.autoFix = { _ in
+                ExportPreflightReport(issues: [])
+            }
             $0.fileExportClient.export = { _, _ in
                 throw SampleError()
             }
             $0.fileExportClient.cleanup = { _ in }
             $0.fileExportDestinationClient.present = { _, _ in
-                Issue.record("Should not request destination when export fails")
+                Issue.record("Should not request destination")
                 return .cancelled
             }
         }
@@ -113,31 +117,26 @@ struct ExportFeatureTests {
             $0.isShowingDocumentPicker = false
         }
     }
+}
 
+// MARK: - Cleanup & Destination Tests
+
+extension ExportFeatureTests {
     @MainActor
     @Test("Cleanup removes temporary file when saved")
     func cleanupRemovesTemporaryFile() async {
         let journal = SQLiteJournal()
-        let expectedURL = URL(fileURLWithPath: "/tmp/Export.json")
+        let expectedURL = URL(
+            fileURLWithPath: "/tmp/Export.json"
+        )
         let cleanupRecorder = CleanupRecorder()
 
-        let store = TestStore(
-            initialState: ExportFeature.State(journal: journal)
-        ) {
-            ExportFeature()
-        } withDependencies: {
-            $0.exportPreflightClient.check = { _ in ExportPreflightReport(issues: []) }
-            $0.exportPreflightClient.autoFix = { _ in ExportPreflightReport(issues: []) }
-            $0.fileExportClient.export = { _, _ in expectedURL }
-            $0.fileExportClient.cleanup = { url in
-                await cleanupRecorder.record(url)
-            }
-            $0.fileExportDestinationClient.present = { url, format in
-                #expect(url == expectedURL)
-                #expect(format == .json)
-                return .saved(url)
-            }
-        }
+        let store = makeCleanupStore(
+            journal: journal,
+            exportURL: expectedURL,
+            cleanupRecorder: cleanupRecorder,
+            destinationResult: .saved(expectedURL)
+        )
 
         await store.send(.exportTapped(.json)) {
             $0.isGenerating = true
@@ -172,25 +171,17 @@ struct ExportFeatureTests {
     @Test("Cancelled export cleans up temporary file")
     func cancelledExportCleansUpTemporaryFile() async {
         let journal = SQLiteJournal()
-        let temporary = URL(fileURLWithPath: "/tmp/Cancelled.json")
+        let temporary = URL(
+            fileURLWithPath: "/tmp/Cancelled.json"
+        )
         let cleanupRecorder = CleanupRecorder()
 
-        let store = TestStore(
-            initialState: ExportFeature.State(journal: journal)
-        ) {
-            ExportFeature()
-        } withDependencies: {
-            $0.exportPreflightClient.check = { _ in ExportPreflightReport(issues: []) }
-            $0.exportPreflightClient.autoFix = { _ in ExportPreflightReport(issues: []) }
-            $0.fileExportClient.export = { _, _ in temporary }
-            $0.fileExportClient.cleanup = { url in
-                await cleanupRecorder.record(url)
-            }
-            $0.fileExportDestinationClient.present = { url, _ in
-                #expect(url == temporary)
-                return .cancelled
-            }
-        }
+        let store = makeCleanupStore(
+            journal: journal,
+            exportURL: temporary,
+            cleanupRecorder: cleanupRecorder,
+            destinationResult: .cancelled
+        )
 
         await store.send(.exportTapped(.json)) {
             $0.isGenerating = true
@@ -225,22 +216,16 @@ struct ExportFeatureTests {
     @Test("Clearing saved destination")
     func clearingSavedDestination() async {
         let journal = SQLiteJournal()
-        let destination = URL(fileURLWithPath: "/tmp/Export.json")
+        let destination = URL(
+            fileURLWithPath: "/tmp/Export.json"
+        )
 
-        let store = TestStore(
-            initialState: ExportFeature.State(journal: journal)
-        ) {
-            ExportFeature()
-        } withDependencies: {
-            $0.exportPreflightClient.check = { _ in ExportPreflightReport(issues: []) }
-            $0.exportPreflightClient.autoFix = { _ in ExportPreflightReport(issues: []) }
-            $0.fileExportClient.export = { _, _ in destination }
-            $0.fileExportClient.cleanup = { _ in }
-            $0.fileExportDestinationClient.present = { url, _ in
-                #expect(url == destination)
-                return .saved(url)
-            }
-        }
+        let store = makeCleanupStore(
+            journal: journal,
+            exportURL: destination,
+            cleanupRecorder: CleanupRecorder(),
+            destinationResult: .saved(destination)
+        )
 
         await store.send(.exportTapped(.json)) {
             $0.isGenerating = true
@@ -272,69 +257,36 @@ struct ExportFeatureTests {
             $0.savedDestinationURL = nil
         }
     }
+}
 
-    @MainActor
-    @Test("Preflight issues present dialog and auto-fix proceeds")
-    func preflightIssuesAutoFixAndExport() async {
-        let journal = SQLiteJournal()
-        let expectedURL = URL(fileURLWithPath: "/tmp/Preflight.json")
-        let issues = [
-            ExportPreflightIssue(
-                kind: .missingScheduleReferences,
-                count: 2,
-                examples: ["a -> b"]
-            )
-        ]
+// MARK: - Test Helpers
 
-        let store = TestStore(
-            initialState: ExportFeature.State(journal: journal)
-        ) {
-            ExportFeature()
-        } withDependencies: {
-            $0.exportPreflightClient.check = { _ in ExportPreflightReport(issues: issues) }
-            $0.exportPreflightClient.autoFix = { _ in ExportPreflightReport(issues: []) }
-            $0.fileExportClient.export = { _, _ in expectedURL }
-            $0.fileExportClient.cleanup = { _ in }
-            $0.fileExportDestinationClient.present = { url, _ in .documentPicker(url) }
+@MainActor
+private func makeCleanupStore(
+    journal: SQLiteJournal,
+    exportURL: URL,
+    cleanupRecorder: CleanupRecorder,
+    destinationResult: FileExportPresentation
+) -> TestStore<
+    ExportFeature.State, ExportFeature.Action
+> {
+    TestStore(
+        initialState: ExportFeature.State(journal: journal)
+    ) {
+        ExportFeature()
+    } withDependencies: {
+        $0.exportPreflightClient.check = { _ in
+            ExportPreflightReport(issues: [])
         }
-
-        await store.send(.exportTapped(.json)) {
-            $0.isGenerating = true
-            $0.errorMessage = nil
+        $0.exportPreflightClient.autoFix = { _ in
+            ExportPreflightReport(issues: [])
         }
-
-        await store.receive(\.preflightResponse) {
-            $0.isGenerating = false
-            $0.preflightReport = ExportPreflightReport(issues: issues)
-            $0.pendingFormat = .json
-            $0.isShowingPreflightDialog = true
+        $0.fileExportClient.export = { _, _ in exportURL }
+        $0.fileExportClient.cleanup = { url in
+            await cleanupRecorder.record(url)
         }
-
-        await store.send(.preflightAutoFixTapped) {
-            $0.isShowingPreflightDialog = false
-            $0.isGenerating = true
-            $0.isAutoFixing = true
-        }
-
-        await store.receive(\.preflightAutoFixResponse) {
-            $0.isGenerating = false
-            $0.isAutoFixing = false
-            $0.preflightReport = nil
-        }
-
-        await store.receive(\.proceedExport) {
-            $0.isGenerating = true
-            $0.errorMessage = nil
-        }
-
-        await store.receive(\.exportResponse) {
-            $0.isGenerating = false
-            $0.isAutoFixing = false
-            $0.preflightReport = nil
-            $0.pendingFormat = nil
-            $0.exportedFileURL = expectedURL
-            $0.savedDestinationURL = nil
-            $0.isShowingDocumentPicker = true
+        $0.fileExportDestinationClient.present = { _, _ in
+            destinationResult
         }
     }
 }

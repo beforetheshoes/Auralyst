@@ -47,7 +47,11 @@ struct AddEntryFeature {
                         .saveResponse(
                             TaskResult {
                                 guard let journal = databaseClient.fetchJournal(journalID) else {
-                                    throw NSError(domain: "AddEntryFeature", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing journal for new entry"])
+                                    throw NSError(
+                                        domain: "AddEntryFeature",
+                                        code: 1,
+                                        userInfo: [NSLocalizedDescriptionKey: "Missing journal"]
+                                    )
                                 }
                                 _ = try databaseClient.createSymptomEntry(
                                     journal,

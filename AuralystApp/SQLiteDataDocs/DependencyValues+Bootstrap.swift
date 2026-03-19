@@ -1,6 +1,7 @@
 @preconcurrency import SQLiteData
 import GRDB
 import Dependencies
+import OSLog
 
 extension DependencyValues {
     mutating func bootstrapDatabase(configureSyncEngine: Bool = true) throws {
@@ -14,7 +15,8 @@ extension DependencyValues {
                     SQLiteMedicationIntake.self,
                     SQLiteCollaboratorNote.self,
                     SQLiteMedicationSchedule.self,
-            containerIdentifier: SQLiteCloudKitConfig.containerIdentifier
+            containerIdentifier: SQLiteCloudKitConfig.containerIdentifier,
+            logger: Logger(subsystem: "Auralyst", category: "CloudKit")
         )
         try seedRecordTypesIfNeeded(database: defaultDatabase)
     }

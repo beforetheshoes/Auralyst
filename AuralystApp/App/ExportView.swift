@@ -18,7 +18,10 @@ struct ExportView: View {
                     .font(.largeTitle)
                     .bold()
 
-                Text("Generate a CSV or JSON snapshot of this journal. Files are saved to a temporary location and shared via the system share sheet.")
+                Text(
+                    "Generate a CSV or JSON snapshot of this journal."
+                    + " Files are saved to a temporary location and shared via the system share sheet."
+                )
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

@@ -42,10 +42,18 @@ struct AddCollaboratorNoteFeature {
                         .saveResponse(
                             TaskResult {
                                 guard let entry = databaseClient.fetchSymptomEntry(entryID) else {
-                                    throw NSError(domain: "AddCollaboratorNoteFeature", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing entry for collaborator note"])
+                                    throw NSError(
+                                        domain: "AddCollaboratorNoteFeature",
+                                        code: 1,
+                                        userInfo: [NSLocalizedDescriptionKey: "Missing entry"]
+                                    )
                                 }
                                 guard let journal = databaseClient.fetchJournal(entry.journalID) else {
-                                    throw NSError(domain: "AddCollaboratorNoteFeature", code: 2, userInfo: [NSLocalizedDescriptionKey: "Missing journal for collaborator note"])
+                                    throw NSError(
+                                        domain: "AddCollaboratorNoteFeature",
+                                        code: 2,
+                                        userInfo: [NSLocalizedDescriptionKey: "Missing journal"]
+                                    )
                                 }
                                 _ = try databaseClient.createCollaboratorNote(
                                     journal,

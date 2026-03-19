@@ -7,13 +7,17 @@ import Observation
 struct SyncEngineClient: Sendable {
     var start: @Sendable () async throws -> Void
     var stop: @Sendable () -> Void
-    var shareJournal: @Sendable (_ journal: SQLiteJournal, _ configure: @Sendable (CKShare) -> Void) async throws -> SharedRecord
+    var shareJournal: @Sendable (
+        _ journal: SQLiteJournal, _ configure: @Sendable (CKShare) -> Void
+    ) async throws -> SharedRecord
     var observeState: @Sendable () -> AsyncStream<State>
 
     init(
         start: @escaping @Sendable () async throws -> Void,
         stop: @escaping @Sendable () -> Void,
-        shareJournal: @escaping @Sendable (_ journal: SQLiteJournal, _ configure: @Sendable (CKShare) -> Void) async throws -> SharedRecord = { _, _ in
+        shareJournal: @escaping @Sendable (
+            _ journal: SQLiteJournal, _ configure: @Sendable (CKShare) -> Void
+        ) async throws -> SharedRecord = { _, _ in
             throw SyncEngineClientError.unimplemented
         },
         observeState: @escaping @Sendable () -> AsyncStream<State> = {
@@ -146,13 +150,7 @@ private extension SyncEngineClient {
                                 _ = syncEngine.isFetchingChanges
                             } onChange: {
                                 guard !Task.isCancelled else { return }
-                                let continuationToResume: CheckedContinuation<Void, Never>? = observationState.withValue {
-                                    guard !$0.didYield else { return nil }
-                                    $0.didYield = true
-                                    let pending = $0.continuation
-                                    $0.continuation = nil
-                                    return pending
-                                }
+                                let continuationToResume = extractContinuation(from: observationState)
                                 guard let continuationToResume else { return }
                                 continuation.yield(State(syncEngine: syncEngine))
                                 continuationToResume.resume()
@@ -172,6 +170,18 @@ private extension SyncEngineClient {
                 task.cancel()
             }
         }
+    }
+}
+
+private func extractContinuation(
+    from observationState: LockIsolated<SyncEngineObservationState>
+) -> CheckedContinuation<Void, Never>? {
+    observationState.withValue {
+        guard !$0.didYield else { return nil }
+        $0.didYield = true
+        let pending = $0.continuation
+        $0.continuation = nil
+        return pending
     }
 }
 

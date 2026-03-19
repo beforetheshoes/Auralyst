@@ -4,90 +4,71 @@ import Dependencies
 
 struct AddEntryView: View {
     @Environment(\.dismiss) private var dismiss
-    let store: StoreOf<AddEntryFeature>
+    @Bindable var store: StoreOf<AddEntryFeature>
 
     var body: some View {
-        WithViewStore(store, observe: { $0 }) { viewStore in
-            NavigationStack {
-                Form {
-                    Section("Severity") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("Overall")
-                                Spacer()
-                                Text("\(viewStore.overallSeverity)")
-                                    .foregroundStyle(Color.brandAccent)
-                                    .monospacedDigit()
-                            }
-                            Slider(
-                                value: viewStore.binding(
-                                    get: { Double($0.overallSeverity) },
-                                    send: { .binding(.set(\.overallSeverity, Int($0.rounded()))) }
-                                ),
-                                in: 0...10,
-                                step: 1
-                            )
+        NavigationStack {
+            Form {
+                Section("Severity") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Overall")
+                            Spacer()
+                            Text("\(store.overallSeverity)")
+                                .foregroundStyle(Color.brandAccent)
+                                .monospacedDigit()
                         }
-                    }
-
-                    Section("Menstruation") {
-                        Toggle(
-                            "Menstruating",
-                            isOn: viewStore.binding(
-                                get: \.isMenstruating,
-                                send: { .binding(.set(\.isMenstruating, $0)) }
-                            )
-                        )
-                        .toggleStyle(.switch)
-                    }
-
-                    Section("Note") {
-                        TextEditor(
-                            text: viewStore.binding(
-                                get: \.note,
-                                send: { .binding(.set(\.note, $0)) }
-                            )
-                        )
-                        .frame(minHeight: 120)
-                    }
-
-                    Section("Timestamp") {
-                        DatePicker(
-                            "Logged At",
-                            selection: viewStore.binding(
-                                get: \.timestamp,
-                                send: { .binding(.set(\.timestamp, $0)) }
+                        Slider(
+                            value: Binding(
+                                get: { Double(store.overallSeverity) },
+                                set: { store.send(.binding(.set(\.overallSeverity, Int($0.rounded())))) }
                             ),
-                            displayedComponents: [.date, .hourAndMinute]
+                            in: 0...10,
+                            step: 1
                         )
                     }
                 }
-                .navigationTitle("New Entry")
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { dismiss() }
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Save") { viewStore.send(.saveTapped) }
-                            .disabled(viewStore.overallSeverity < 0 || viewStore.overallSeverity > 10 || viewStore.isSaving)
-                    }
+
+                Section("Menstruation") {
+                    Toggle("Menstruating", isOn: $store.isMenstruating)
+                        .toggleStyle(.switch)
                 }
-                .alert(
-                    "Unable to Save",
-                    isPresented: viewStore.binding(
-                        get: { $0.errorMessage != nil },
-                        send: { _ in .clearError }
+
+                Section("Note") {
+                    TextEditor(text: $store.note)
+                        .frame(minHeight: 120)
+                }
+
+                Section("Timestamp") {
+                    DatePicker(
+                        "Logged At",
+                        selection: $store.timestamp,
+                        displayedComponents: [.date, .hourAndMinute]
                     )
-                ) {
-                    Button("OK") { viewStore.send(.clearError) }
-                } message: {
-                    Text(viewStore.errorMessage ?? "")
                 }
-                .onChange(of: viewStore.didSave) { _, didSave in
-                    guard didSave else { return }
-                    viewStore.send(.clearDidSave)
-                    dismiss()
+            }
+            .navigationTitle("New Entry")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
                 }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { store.send(.saveTapped) }
+                        .disabled(store.overallSeverity < 0 || store.overallSeverity > 10 || store.isSaving)
+                }
+            }
+            .alert(
+                "Unable to Save",
+                isPresented: Binding(get: { store.errorMessage != nil }, set: { _ in store.send(.clearError) })
+            ) {
+                Button("OK") { store.send(.clearError) }
+            } message: {
+                Text(store.errorMessage ?? "")
+            }
+            .onChange(of: store.didSave) { _, didSave in
+                guard didSave else { return }
+                store.send(.clearDidSave)
+                dismiss()
             }
         }
     }

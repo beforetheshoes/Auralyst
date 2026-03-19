@@ -8,39 +8,29 @@ import ComposableArchitecture
 @Suite("Sync status feature", .serialized)
 struct SyncStatusFeatureTests {
     @MainActor
-    @Test("Start sync remains syncing until engine finishes, then transitions to up to date")
+    @Test("Start sync honors engine state transitions")
     func startSyncHonorsEngineState() async throws {
         try prepareTestDependencies()
 
         let startState = StartCallState()
-        let stateStream = SyncEngineStateStream(initialState: .syncing)
-        let client = SyncEngineClient(
-            start: {
-                try await withCheckedThrowingContinuation { continuation in
-                    Task { await startState.capture(continuation) }
-                }
-            },
-            stop: {
-                Task { await startState.incrementStop() }
-            },
-            observeState: { stateStream.stream }
+        let stateStream = SyncEngineStateStream(
+            initialState: .syncing
+        )
+        let client = makeSyncClient(
+            startState: startState,
+            stateStream: stateStream
         )
 
-        let fixedDate = Date(timeIntervalSince1970: 1_704_000_000)
+        let fixedDate = Date(
+            timeIntervalSince1970: 1_704_000_000
+        )
 
-        let store = TestStore(
-            initialState: SyncStatusFeature.State(
-                shouldStartSync: true,
-                overridePhaseRaw: nil
-            )
-        ) {
-            SyncStatusFeature()
-        } withDependencies: {
-            $0.syncEngine = client
-            $0.date.now = fixedDate
-            $0.syncStallTimeoutDuration = .milliseconds(20)
-        }
-        store.exhaustivity = .off(showSkippedAssertions: false)
+        let store = makeSyncStore(
+            client: client, fixedDate: fixedDate
+        )
+        store.exhaustivity = .off(
+            showSkippedAssertions: false
+        )
 
         await store.send(.task) {
             $0.isStarting = true
@@ -75,7 +65,7 @@ struct SyncStatusFeatureTests {
     }
 
     @MainActor
-    @Test("Stall timeout promotes syncing-without-work to up to date")
+    @Test("Stall timeout promotes syncing to up to date")
     func stallTimeoutPromotesToUpToDate() async throws {
         try prepareTestDependencies()
 
@@ -86,31 +76,21 @@ struct SyncStatusFeatureTests {
             isSendingChanges: false,
             isFetchingChanges: false
         )
-        let stateStream = SyncEngineStateStream(initialState: stalledState)
-        let client = SyncEngineClient(
-            start: {
-                try await withCheckedThrowingContinuation { continuation in
-                    Task { await startState.capture(continuation) }
-                }
-            },
-            stop: {},
-            observeState: { stateStream.stream }
+        let stateStream = SyncEngineStateStream(
+            initialState: stalledState
+        )
+        let client = makeSyncClient(
+            startState: startState,
+            stateStream: stateStream
         )
 
-        let fixedDate = Date(timeIntervalSince1970: 1_704_000_100)
+        let fixedDate = Date(
+            timeIntervalSince1970: 1_704_000_100
+        )
 
-        let store = TestStore(
-            initialState: SyncStatusFeature.State(
-                shouldStartSync: true,
-                overridePhaseRaw: nil
-            )
-        ) {
-            SyncStatusFeature()
-        } withDependencies: {
-            $0.syncEngine = client
-            $0.date.now = fixedDate
-            $0.syncStallTimeoutDuration = .milliseconds(20)
-        }
+        let store = makeSyncStore(
+            client: client, fixedDate: fixedDate
+        )
 
         await store.send(.task) {
             $0.isStarting = true
@@ -141,9 +121,13 @@ struct SyncStatusFeatureTests {
         stateStream.finish()
         await store.finish()
     }
+}
 
+// MARK: - Additional Sync Tests
+
+extension SyncStatusFeatureTests {
     @MainActor
-    @Test("Stall timeout promotes long-running syncing even if work flags stay true")
+    @Test("Stall timeout promotes long-running sync")
     func stallTimeoutPromotesLongRunningSync() async throws {
         try prepareTestDependencies()
 
@@ -153,12 +137,17 @@ struct SyncStatusFeatureTests {
             isSendingChanges: true,
             isFetchingChanges: true
         )
-        let syncingSince = Date(timeIntervalSince1970: 1_704_000_200)
+        let syncingSince = Date(
+            timeIntervalSince1970: 1_704_000_200
+        )
         let now = syncingSince.addingTimeInterval(60)
 
         let store = TestStore(
             initialState: SyncStatusFeature.State(
-                status: SyncStatus(phase: .syncing, lastSuccessfulSync: nil),
+                status: SyncStatus(
+                    phase: .syncing,
+                    lastSuccessfulSync: nil
+                ),
                 latestState: busyState,
                 syncingSince: syncingSince,
                 shouldStartSync: true,
@@ -179,24 +168,24 @@ struct SyncStatusFeatureTests {
     }
 
     @MainActor
-    @Test("Failed start surfaces error phase and retains last success timestamp")
+    @Test("Failed start surfaces error phase")
     func startSyncFailureSurfacesError() async throws {
         try prepareTestDependencies()
 
-        let startState = StartCallState(throws: TestError())
+        let startState = StartCallState(
+            throws: SyncTestError()
+        )
         let client = SyncEngineClient(
             start: {
-                try await withCheckedThrowingContinuation { continuation in
-                    Task { await startState.capture(continuation) }
+                try await withCheckedThrowingContinuation { cont in
+                    Task { await startState.capture(cont) }
                 }
             },
             stop: {
                 Task { await startState.incrementStop() }
             },
             observeState: {
-                AsyncStream { continuation in
-                    continuation.finish()
-                }
+                AsyncStream { $0.finish() }
             }
         )
 
@@ -219,29 +208,29 @@ struct SyncStatusFeatureTests {
 
         await store.receive(\.startSyncResponse) {
             $0.isStarting = false
-            $0.status.phase = .error(SyncIssue(error: TestError()))
+            $0.status.phase = .error(
+                SyncIssue(error: SyncTestError())
+            )
         }
 
         await store.finish()
     }
 
     @MainActor
-    @Test("Repeated activation while starting does not start sync twice")
+    @Test("Repeated activation does not start sync twice")
     func repeatedActivePhaseDoesNotStartTwice() async throws {
         try prepareTestDependencies()
 
         let startState = StartCallState()
         let client = SyncEngineClient(
             start: {
-                try await withCheckedThrowingContinuation { continuation in
-                    Task { await startState.capture(continuation) }
+                try await withCheckedThrowingContinuation { cont in
+                    Task { await startState.capture(cont) }
                 }
             },
             stop: {},
             observeState: {
-                AsyncStream { continuation in
-                    continuation.finish()
-                }
+                AsyncStream { $0.finish() }
             }
         )
 
@@ -263,7 +252,6 @@ struct SyncStatusFeatureTests {
         }
 
         await startState.waitForStartCall()
-
         await store.send(.scenePhaseChanged(.active))
 
         let startCount = await startState.getStartCount()
@@ -279,8 +267,8 @@ struct SyncStatusFeatureTests {
     }
 
     @MainActor
-    @Test("Background scene phase does not stop the sync engine")
-    func backgroundScenePhaseDoesNotStopSyncEngine() async throws {
+    @Test("Background phase does not stop sync engine")
+    func backgroundDoesNotStopSyncEngine() async throws {
         try prepareTestDependencies()
 
         let stopCount = LockIsolated(0)
@@ -309,104 +297,6 @@ struct SyncStatusFeatureTests {
         }
 
         await store.send(.scenePhaseChanged(.background))
-
         #expect(stopCount.value == 0)
     }
-}
-
-private actor StartCallState {
-    private var continuation: CheckedContinuation<Void, Error>?
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-    private var stopWaiters: [(expected: Int, continuation: CheckedContinuation<Void, Never>)] = []
-    private(set) var stopCount = 0
-    private var startCount = 0
-    private let thrownError: Error?
-
-    init(throws error: Error? = nil) {
-        self.thrownError = error
-    }
-
-    func capture(_ continuation: CheckedContinuation<Void, Error>) {
-        startCount += 1
-        if let thrownError {
-            continuation.resume(throwing: thrownError)
-            notifyWaiters()
-            return
-        }
-        self.continuation = continuation
-        notifyWaiters()
-    }
-
-    func getStartCount() -> Int {
-        startCount
-    }
-
-    func waitForStartCall() async {
-        guard continuation == nil else { return }
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            waiters.append(continuation)
-        }
-    }
-
-    func resumeStartSuccessfully() {
-        continuation?.resume()
-        continuation = nil
-    }
-
-    func incrementStop() {
-        stopCount += 1
-        var remaining: [(expected: Int, continuation: CheckedContinuation<Void, Never>)] = []
-        for waiter in stopWaiters {
-            if stopCount >= waiter.expected {
-                waiter.continuation.resume()
-            } else {
-                remaining.append(waiter)
-            }
-        }
-        stopWaiters = remaining
-    }
-
-    func waitForStopCount(_ expected: Int) async {
-        guard stopCount < expected else { return }
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            stopWaiters.append((expected: expected, continuation: continuation))
-        }
-    }
-
-    private func notifyWaiters() {
-        let waiters = self.waiters
-        self.waiters.removeAll()
-        waiters.forEach { $0.resume() }
-    }
-}
-
-private struct TestError: Error, CustomStringConvertible, Equatable {
-    var description: String { "TestError" }
-}
-
-private final class SyncEngineStateStream: @unchecked Sendable {
-    let stream: AsyncStream<SyncEngineClient.State>
-    private let continuation: AsyncStream<SyncEngineClient.State>.Continuation
-
-    init(initialState: SyncEngineClient.State) {
-        var storedContinuation: AsyncStream<SyncEngineClient.State>.Continuation!
-        self.stream = AsyncStream { continuation in
-            storedContinuation = continuation
-            continuation.yield(initialState)
-        }
-        self.continuation = storedContinuation
-    }
-
-    func yield(_ state: SyncEngineClient.State) {
-        continuation.yield(state)
-    }
-
-    func finish() {
-        continuation.finish()
-    }
-}
-
-private extension SyncEngineClient.State {
-    static var syncing: Self { .init(isRunning: true, isSynchronizing: true, isSendingChanges: true, isFetchingChanges: true) }
-    static var upToDate: Self { .init(isRunning: true, isSynchronizing: false, isSendingChanges: false, isFetchingChanges: false) }
 }

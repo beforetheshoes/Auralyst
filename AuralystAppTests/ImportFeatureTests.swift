@@ -12,55 +12,35 @@ struct ImportFeatureTests {
     @Test("Clean analysis proceeds directly to strict import")
     func cleanAnalysisProceedsToImport() async throws {
         try prepareTestDependencies()
-        let notificationCenter = NotificationCenter()
+        let center = NotificationCenter()
 
         let url = URL(fileURLWithPath: "/tmp/import.json")
-        let analysis = ImportAnalysis(fixableIssues: [], blockingIssues: [])
-        let result = ImportResult(
-            journalID: UUID(),
-            summary: ImportSummary(
-                importedEntries: 1,
-                importedMedications: 1,
-                importedSchedules: 0,
-                importedIntakes: 1,
-                importedCollaboratorNotes: 0
-            )
+        let analysis = ImportAnalysis(
+            fixableIssues: [], blockingIssues: []
         )
+        let result = makeImportResult()
 
-        let store = TestStore(
-            initialState: ImportFeature.State(
-                hasExistingJournal: false,
-                selectedFileURL: url
+        let store = makeImportStore(ImportStoreConfig(
+            url: url, analysis: analysis,
+            result: result, resolution: .strict,
+            replaceExisting: false,
+            notificationCenter: center
+        ))
+
+        let medsTask = Task {
+            await expectNotification(
+                .medicationsDidChange, center: center
             )
-        ) {
-            ImportFeature()
-        } withDependencies: {
-            $0.importClient.analyze = { inputURL in
-                #expect(inputURL == url)
-                return analysis
-            }
-            $0.importClient.importJournal = { inputURL, replaceExisting, resolution in
-                #expect(inputURL == url)
-                #expect(replaceExisting == false)
-                #expect(resolution == .strict)
-                return result
-            }
-            $0.notificationCenter = notificationCenter
         }
-
-        let medsTask = Task { await expectNotification(.medicationsDidChange, center: notificationCenter) }
-        let intakesTask = Task { await expectNotification(.medicationIntakesDidChange, center: notificationCenter) }
+        let intakesTask = Task {
+            await expectNotification(
+                .medicationIntakesDidChange, center: center
+            )
+        }
 
         await store.send(.importTapped)
 
-        await store.receive(\.checkExistingJournalResponse) {
-            $0.hasExistingJournal = false
-            $0.isAnalyzing = true
-            $0.errorMessage = nil
-            $0.lastResult = nil
-            $0.analysis = nil
-            $0.pendingReplaceExisting = false
-        }
+        await assertCheckExistingJournal(store: store)
 
         await store.receive(\.analyzeResponse) {
             $0.isAnalyzing = false
@@ -85,9 +65,11 @@ struct ImportFeatureTests {
     @Test("Fixable issues show dialog and auto-fix import runs")
     func fixableIssuesShowDialogAndAutoFix() async throws {
         try prepareTestDependencies()
-        let notificationCenter = NotificationCenter()
+        let center = NotificationCenter()
 
-        let url = URL(fileURLWithPath: "/tmp/import-issues.json")
+        let url = URL(
+            fileURLWithPath: "/tmp/import-issues.json"
+        )
         let analysis = ImportAnalysis(
             fixableIssues: [
                 ImportIssue(
@@ -99,48 +81,18 @@ struct ImportFeatureTests {
             ],
             blockingIssues: []
         )
-        let result = ImportResult(
-            journalID: UUID(),
-            summary: ImportSummary(
-                importedEntries: 0,
-                importedMedications: 1,
-                importedSchedules: 0,
-                importedIntakes: 2,
-                importedCollaboratorNotes: 0
-            )
-        )
+        let result = makeAutoFixImportResult()
 
-        let store = TestStore(
-            initialState: ImportFeature.State(
-                hasExistingJournal: false,
-                selectedFileURL: url
-            )
-        ) {
-            ImportFeature()
-        } withDependencies: {
-            $0.importClient.analyze = { inputURL in
-                #expect(inputURL == url)
-                return analysis
-            }
-            $0.importClient.importJournal = { inputURL, replaceExisting, resolution in
-                #expect(inputURL == url)
-                #expect(replaceExisting == false)
-                #expect(resolution == .autoFix)
-                return result
-            }
-            $0.notificationCenter = notificationCenter
-        }
+        let store = makeImportStore(ImportStoreConfig(
+            url: url, analysis: analysis,
+            result: result, resolution: .autoFix,
+            replaceExisting: false,
+            notificationCenter: center
+        ))
 
         await store.send(.importTapped)
 
-        await store.receive(\.checkExistingJournalResponse) {
-            $0.hasExistingJournal = false
-            $0.isAnalyzing = true
-            $0.errorMessage = nil
-            $0.lastResult = nil
-            $0.analysis = nil
-            $0.pendingReplaceExisting = false
-        }
+        await assertCheckExistingJournal(store: store)
 
         await store.receive(\.analyzeResponse) {
             $0.isAnalyzing = false
@@ -165,8 +117,92 @@ struct ImportFeatureTests {
     }
 }
 
+// MARK: - Store Factory
+
+private struct ImportStoreConfig {
+    let url: URL
+    let analysis: ImportAnalysis
+    let result: ImportResult
+    let resolution: ImportResolution
+    let replaceExisting: Bool
+    let notificationCenter: NotificationCenter
+}
+
 @MainActor
-private func expectNotification(_ name: Notification.Name, center: NotificationCenter) async -> Bool {
+private func makeImportStore(
+    _ config: ImportStoreConfig
+) -> TestStore<ImportFeature.State, ImportFeature.Action> {
+    TestStore(
+        initialState: ImportFeature.State(
+            hasExistingJournal: false,
+            selectedFileURL: config.url
+        )
+    ) {
+        ImportFeature()
+    } withDependencies: {
+        $0.importClient.analyze = { inputURL in
+            #expect(inputURL == config.url)
+            return config.analysis
+        }
+        $0.importClient.importJournal = { inputURL, replace, res in
+            #expect(inputURL == config.url)
+            #expect(replace == config.replaceExisting)
+            #expect(res == config.resolution)
+            return config.result
+        }
+        $0.notificationCenter = config.notificationCenter
+    }
+}
+
+@MainActor
+private func assertCheckExistingJournal(
+    store: TestStore<
+        ImportFeature.State, ImportFeature.Action
+    >
+) async {
+    await store.receive(\.checkExistingJournalResponse) {
+        $0.hasExistingJournal = false
+        $0.isAnalyzing = true
+        $0.errorMessage = nil
+        $0.lastResult = nil
+        $0.analysis = nil
+        $0.pendingReplaceExisting = false
+    }
+}
+
+// MARK: - Result Factories
+
+private func makeImportResult() -> ImportResult {
+    ImportResult(
+        journalID: UUID(),
+        summary: ImportSummary(
+            importedEntries: 1,
+            importedMedications: 1,
+            importedSchedules: 0,
+            importedIntakes: 1,
+            importedCollaboratorNotes: 0
+        )
+    )
+}
+
+private func makeAutoFixImportResult() -> ImportResult {
+    ImportResult(
+        journalID: UUID(),
+        summary: ImportSummary(
+            importedEntries: 0,
+            importedMedications: 1,
+            importedSchedules: 0,
+            importedIntakes: 2,
+            importedCollaboratorNotes: 0
+        )
+    )
+}
+
+@MainActor
+private func expectNotification(
+    _ name: Notification.Name,
+    center: NotificationCenter
+) async -> Bool {
     await withTaskGroup(of: Bool.self) { group in
         group.addTask {
             for await _ in center.notifications(named: name) {

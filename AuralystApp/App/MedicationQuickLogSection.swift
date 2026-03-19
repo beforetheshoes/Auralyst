@@ -28,7 +28,10 @@ struct MedicationQuickLogSection: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(scheduledMedications(snapshot: store.snapshot)) { med in
-                    if let doses = scheduledDoses(for: med, on: store.selectedDate, snapshot: store.snapshot), !doses.isEmpty {
+                    if let doses = scheduledDoses(
+                        for: med, on: store.selectedDate,
+                        snapshot: store.snapshot
+                    ), !doses.isEmpty {
                         VStack(alignment: .leading, spacing: 6) {
                             Text(med.name)
                                 .font(.subheadline.weight(.semibold))
@@ -246,7 +249,10 @@ struct MedicationQuickLogSection: View {
         }
     }
 
-    private func scheduledDateTime(for schedule: SQLiteMedicationSchedule, on date: Date) -> (timestamp: Date, scheduledDate: Date) {
+    private func scheduledDateTime(
+        for schedule: SQLiteMedicationSchedule,
+        on date: Date
+    ) -> (timestamp: Date, scheduledDate: Date) {
         let cal = Calendar.current
         let start = cal.startOfDay(for: date)
         var comps = cal.dateComponents([.year, .month, .day], from: start)
@@ -374,33 +380,5 @@ struct AsNeededIntakeView: View {
 
     private func canSave() -> Bool {
         Double(store.amount) != nil || store.medication.defaultAmount != nil
-    }
-}
-
-extension Notification.Name {
-    static let medicationsDidChange = Notification.Name("com.auralyst.medicationsDidChange")
-    static let medicationIntakesDidChange = Notification.Name("com.auralyst.medicationIntakesDidChange")
-}
-
-extension Double {
-    var cleanAmount: String {
-        if floor(self) == self { return String(Int(self)) }
-        return String(self)
-    }
-}
-
-#Preview {
-    withPreviewDataStore {
-        let journal = DependencyValues._current.databaseClient.createJournal()
-        List {
-            MedicationQuickLogSection(
-                store: Store(initialState: MedicationQuickLogFeature.State(journalID: journal.id)) {
-                    MedicationQuickLogFeature()
-                },
-                manageAction: {},
-                loggingError: nil,
-                presentAsNeeded: { _, _ in }
-            )
-        }
     }
 }
