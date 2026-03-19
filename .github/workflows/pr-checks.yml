@@ -36,12 +36,14 @@ jobs:
           defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
           defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
 
-      - name: Build
+      - name: Build and test
         run: |
-          xcodebuild build-for-testing \
+          xcodebuild test \
             -project AuralystApp.xcodeproj \
             -scheme "$SCHEME" \
             -destination "platform=macOS" \
+            -skip-testing:AuralystAppUITests \
+            -resultBundlePath TestResults.xcresult \
             -skipPackagePluginValidation \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
@@ -49,15 +51,6 @@ jobs:
             ENABLE_USER_SCRIPT_SANDBOXING=NO \
             SWIFT_ENABLE_EXPERIMENTAL_FEATURES=Macros \
             OTHER_SWIFT_FLAGS='$(inherited) -enable-experimental-feature Macros -enable-experimental-feature CompilerPlugin'
-
-      - name: Run unit tests
-        run: |
-          xcodebuild test-without-building \
-            -project AuralystApp.xcodeproj \
-            -scheme "$SCHEME" \
-            -destination "platform=macOS" \
-            -skip-testing:AuralystAppUITests \
-            -resultBundlePath TestResults.xcresult
 
       - name: Upload test results
         if: failure()
