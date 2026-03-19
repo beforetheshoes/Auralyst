@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Pre-push hook: runs UI tests locally before pushing.
+# Skip with: git push --no-verify
+
+echo "Running UI tests before push..."
+
+# Find the first available iPhone simulator
+DEVICE=$(xcrun simctl list devices available -j \
+  | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for runtime, devices in data['devices'].items():
+    if 'iOS' not in runtime:
+        continue
+    for d in devices:
+        if 'iPhone' in d['name'] and d['isAvailable']:
+            print(d['name'])
+            sys.exit(0)
+sys.exit(1)
+" 2>/dev/null) || DEVICE="iPhone 16 Pro"
+
+echo "Using simulator: $DEVICE"
+
+xcodebuild test \
+  -project AuralystApp.xcodeproj \
+  -scheme AuralystApp \
+  -destination "platform=iOS Simulator,name=$DEVICE" \
+  -only-testing:AuralystAppUITests \
+  -skipPackagePluginValidation \
+  -quiet \
+  CODE_SIGN_IDENTITY="-" \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGNING_ALLOWED=NO \
+  ENABLE_USER_SCRIPT_SANDBOXING=NO
+
+echo "UI tests passed."
