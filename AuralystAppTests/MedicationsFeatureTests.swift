@@ -21,29 +21,7 @@ struct MedicationsFeatureTests {
         )
 
         @Dependency(\.defaultDatabase) var database
-        let schedule = SQLiteMedicationSchedule(
-            medicationID: medication.id,
-            label: "Bedtime",
-            amount: 1, unit: "tablet",
-            cadence: "daily", interval: 1,
-            daysOfWeekMask: MedicationWeekday.mask(
-                for: MedicationWeekday.allCases
-            ),
-            hour: 22, minute: 30,
-            isActive: true, sortOrder: 0
-        )
-        try await database.write { db in
-            try insertSchedule(schedule, in: db)
-            try insertIntake(
-                SQLiteMedicationIntake(
-                    medicationID: medication.id,
-                    scheduleID: schedule.id,
-                    amount: 1, unit: "tablet",
-                    timestamp: .now
-                ),
-                in: db
-            )
-        }
+        try await seedScheduleAndIntake(medicationID: medication.id, database: database)
 
         let testStore = TestStore(
             initialState: MedicationsFeature.State(journal: journal)
@@ -61,10 +39,7 @@ struct MedicationsFeatureTests {
         let scheduleCount = try await database.read { db in
             try Int.fetchOne(
                 db,
-                sql: """
-                    SELECT COUNT(*) FROM sqLiteMedicationSchedule
-                    WHERE lower(medicationID) = lower(?)
-                    """,
+                sql: "SELECT COUNT(*) FROM sqLiteMedicationSchedule WHERE lower(medicationID) = lower(?)",
                 arguments: [medication.id.uuidString]
             ) ?? 0
         }
@@ -126,6 +101,33 @@ struct MedicationsFeatureTests {
 
         await testStore.send(.clearError) {
             $0.errorMessage = nil
+        }
+    }
+
+    private func seedScheduleAndIntake(
+        medicationID: UUID,
+        database: any DatabaseWriter
+    ) async throws {
+        let schedule = SQLiteMedicationSchedule(
+            medicationID: medicationID,
+            label: "Bedtime",
+            amount: 1, unit: "tablet",
+            cadence: "daily", interval: 1,
+            daysOfWeekMask: MedicationWeekday.mask(for: MedicationWeekday.allCases),
+            hour: 22, minute: 30,
+            isActive: true, sortOrder: 0
+        )
+        try await database.write { db in
+            try insertSchedule(schedule, in: db)
+            try insertIntake(
+                SQLiteMedicationIntake(
+                    medicationID: medicationID,
+                    scheduleID: schedule.id,
+                    amount: 1, unit: "tablet",
+                    timestamp: .now
+                ),
+                in: db
+            )
         }
     }
 }
