@@ -54,31 +54,11 @@ func assignMedOps(
     }
 
     client.createMedication = { journal, name, defaultAmount, defaultUnit in
-        ensureJournalCloudMetadata(
-            journalID: journal.id,
+        createMedicationImpl(
+            journal: journal, name: name,
+            defaultAmount: defaultAmount, defaultUnit: defaultUnit,
             database: database, logger: logger
         )
-        let medication = SQLiteMedication(
-            journalID: journal.id,
-            name: name,
-            defaultAmount: defaultAmount,
-            defaultUnit: defaultUnit
-        )
-        do {
-            try database.write { db in
-                try SQLiteMedication
-                    .insert { medication }.execute(db)
-            }
-            logger.info(
-                "Created medication: \(name)"
-            )
-            return medication
-        } catch {
-            logger.error(
-                "Error creating medication: \(error.localizedDescription)"
-            )
-            return medication
-        }
     }
 
     client.loadMedicationForEditor = { medicationID in
@@ -99,42 +79,9 @@ func assignMedOps(
     }
 
     client.saveMedicationFromEditor = { snapshot in
-        do {
-            try database.write { db in
-                let amountValue = Double(snapshot.defaultAmount)
-                let unitValue = snapshot.defaultUnit.isEmpty ? nil : snapshot.defaultUnit
-                let notesValue = snapshot.notes.isEmpty ? nil : snapshot.notes
-                let useCaseValue = snapshot.useCase.isEmpty ? nil : snapshot.useCase
-                let now = Date()
-
-                let medicationID = try upsertMedication(
-                    in: db,
-                    params: MedicationUpsertParams(
-                        journalID: snapshot.journalID,
-                        medicationID: snapshot.medicationID,
-                        name: snapshot.name,
-                        amount: amountValue,
-                        unit: unitValue,
-                        isAsNeeded: snapshot.isAsNeeded,
-                        useCase: useCaseValue,
-                        notes: notesValue,
-                        timestamp: now
-                    )
-                )
-
-                var drafts = snapshot.scheduleDrafts
-                try syncSchedules(
-                    in: db, medicationID: medicationID,
-                    drafts: &drafts
-                )
-            }
-            logger.info("Saved medication from editor")
-        } catch {
-            logger.error(
-                "Error saving medication from editor: \(error.localizedDescription)"
-            )
-            throw error
-        }
+        try saveMedicationFromEditorImpl(
+            snapshot: snapshot, database: database, logger: logger
+        )
     }
 
     client.fetchMedications = { journal in
@@ -153,6 +100,83 @@ func assignMedOps(
             )
             return []
         }
+    }
+}
+
+// swiftlint:disable:next function_parameter_count
+private func createMedicationImpl(
+    journal: SQLiteJournal,
+    name: String,
+    defaultAmount: Double?,
+    defaultUnit: String?,
+    database: any DatabaseWriter,
+    logger: Logger
+) -> SQLiteMedication {
+    ensureJournalCloudMetadata(
+        journalID: journal.id,
+        database: database, logger: logger
+    )
+    let medication = SQLiteMedication(
+        journalID: journal.id,
+        name: name,
+        defaultAmount: defaultAmount,
+        defaultUnit: defaultUnit
+    )
+    do {
+        try database.write { db in
+            try SQLiteMedication
+                .insert { medication }.execute(db)
+        }
+        logger.info("Created medication: \(name)")
+        return medication
+    } catch {
+        logger.error(
+            "Error creating medication: \(error.localizedDescription)"
+        )
+        return medication
+    }
+}
+
+private func saveMedicationFromEditorImpl(
+    snapshot: MedicationEditorSnapshot,
+    database: any DatabaseWriter,
+    logger: Logger
+) throws {
+    do {
+        try database.write { db in
+            let amountValue = Double(snapshot.defaultAmount)
+            let unitValue = snapshot.defaultUnit.isEmpty ? nil : snapshot.defaultUnit
+            let notesValue = snapshot.notes.isEmpty ? nil : snapshot.notes
+            let useCaseValue = snapshot.useCase.isEmpty ? nil : snapshot.useCase
+            let now = Date()
+
+            let medicationID = try upsertMedication(
+                in: db,
+                params: MedicationUpsertParams(
+                    journalID: snapshot.journalID,
+                    medicationID: snapshot.medicationID,
+                    name: snapshot.name,
+                    amount: amountValue,
+                    unit: unitValue,
+                    isAsNeeded: snapshot.isAsNeeded,
+                    useCase: useCaseValue,
+                    notes: notesValue,
+                    timestamp: now
+                )
+            )
+
+            var drafts = snapshot.scheduleDrafts
+            try syncSchedules(
+                in: db, medicationID: medicationID,
+                drafts: &drafts
+            )
+        }
+        logger.info("Saved medication from editor")
+    } catch {
+        logger.error(
+            "Error saving medication from editor: \(error.localizedDescription)"
+        )
+        throw error
     }
 }
 
@@ -221,20 +245,9 @@ func assignIntakeCreateOps(
     }
 
     client.createAsNeededIntake = { intake in
-        do {
-            try database.write { db in
-                try SQLiteMedicationIntake
-                    .insert { intake }.execute(db)
-            }
-            logger.info(
-                "Created as-needed intake for: \(intake.medicationID)"
-            )
-        } catch {
-            logger.error(
-                "Error creating as-needed intake: \(error.localizedDescription)"
-            )
-            throw error
-        }
+        try createAsNeededIntakeImpl(
+            intake, database: database, logger: logger
+        )
     }
 
     client.fetchMedicationIntake = { id in
@@ -251,6 +264,27 @@ func assignIntakeCreateOps(
             )
             return nil
         }
+    }
+}
+
+private func createAsNeededIntakeImpl(
+    _ intake: SQLiteMedicationIntake,
+    database: any DatabaseWriter,
+    logger: Logger
+) throws {
+    do {
+        try database.write { db in
+            try SQLiteMedicationIntake
+                .insert { intake }.execute(db)
+        }
+        logger.info(
+            "Created as-needed intake for: \(intake.medicationID)"
+        )
+    } catch {
+        logger.error(
+            "Error creating as-needed intake: \(error.localizedDescription)"
+        )
+        throw error
     }
 }
 
@@ -300,73 +334,6 @@ func assignIntakeMutateOps(
                 "Error deleting intake \(intake.id): \(error.localizedDescription)"
             )
             throw error
-        }
-    }
-}
-
-// MARK: - Quick Log Operations
-
-func assignQuickLogOps(
-    to client: inout DatabaseClient,
-    database: any DatabaseWriter,
-    logger: Logger
-) {
-    client.fetchQuickLogSnapshot = { journalID, date in
-        let loader = MedicationQuickLogLoader(database: database)
-        return try loader.load(journalID: journalID, on: date)
-    }
-
-    client.logScheduledDose = { params in
-        let times = MedicationQuickLogFeature.scheduledDateTime(
-            for: params.schedule, on: params.date
-        )
-        let amountValue = params.schedule.amount ?? params.medication.defaultAmount
-        let unitValue = params.schedule.unit ?? params.medication.defaultUnit
-        try database.write { db in
-            let persistedScheduleID = try scheduleIDToPersist(
-                scheduleID: params.schedule.id, db: db
-            )
-            try insertMedicationIntake(
-                in: db,
-                medicationID: params.schedule.medicationID,
-                scheduleID: persistedScheduleID,
-                amount: amountValue,
-                unit: unitValue,
-                timestamp: times.timestamp,
-                scheduledDate: times.scheduledDate,
-                origin: "scheduled"
-            )
-        }
-    }
-
-    client.unlogScheduledDose = { params in
-        if let intake = params.snapshot.takenByScheduleID[params.schedule.id] {
-            try database.write { db in
-                try db.execute(
-                    sql: """
-                        DELETE FROM "sqLiteMedicationIntake"
-                        WHERE lower("id") = lower(?)
-                        """,
-                    arguments: [intake.id.uuidString]
-                )
-            }
-        } else if params.schedule.id == params.schedule.medicationID {
-            let bounds = MedicationQuickLogFeature.dayBounds(for: params.date)
-            try database.write { db in
-                try db.execute(
-                    sql: """
-                        DELETE FROM "sqLiteMedicationIntake"
-                        WHERE lower("medicationID") = lower(?)
-                        AND "timestamp" >= ? AND "timestamp" < ?
-                        AND "scheduleID" IS NULL
-                        """,
-                    arguments: [
-                        params.schedule.medicationID.uuidString,
-                        bounds.start,
-                        bounds.end
-                    ]
-                )
-            }
         }
     }
 }
