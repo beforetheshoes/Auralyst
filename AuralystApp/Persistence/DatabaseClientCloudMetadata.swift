@@ -72,24 +72,48 @@ private func ensureMetadataInTransaction(
         )
     }
 
+    try insertMetadataRow(
+        journalID: journalID, db: db
+    )
+}
+
+private func insertMetadataRow(
+    journalID: UUID, db: Database
+) throws {
     try db.execute(
         sql: """
-            UPDATE sqLiteJournal
-            SET createdAt = createdAt WHERE id = ?
+            INSERT INTO sqlitedata_icloud_metadata
+                (recordPrimaryKey, recordType, zoneName, ownerName,
+                 userModificationTime, _isDeleted)
+            VALUES (
+                ?, ?,
+                COALESCE(
+                    (SELECT zoneName FROM sqlitedata_icloud_metadata LIMIT 1),
+                    'co.pointfree.SQLiteData.defaultZone'
+                ),
+                COALESCE(
+                    (SELECT ownerName FROM sqlitedata_icloud_metadata LIMIT 1),
+                    '__defaultOwner__'
+                ),
+                CAST(strftime('%s', 'now') AS INTEGER),
+                0
+            )
+            ON CONFLICT DO NOTHING
             """,
-        arguments: [journalID.uuidString]
+        arguments: [journalID.uuidString, SQLiteJournal.tableName]
     )
 }
 
 private func iCloudMetadataTableExists(in db: Database) throws -> Bool {
-    try String.fetchOne(
+    try Bool.fetchOne(
         db,
         sql: """
-            SELECT name FROM sqlite_master
-            WHERE type = 'table'
-            AND name = 'sqlitedata_icloud_metadata'
+            SELECT EXISTS(
+                SELECT 1 FROM pragma_table_list
+                WHERE name = 'sqlitedata_icloud_metadata'
+            )
         """
-    ) != nil
+    ) ?? false
 }
 
 private func evaluateMetadataRow(

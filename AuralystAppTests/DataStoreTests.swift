@@ -35,15 +35,11 @@ struct DataStoreSuite {
 // The SyncEngine's complex triggers corrupt the Swift runtime's generic metadata
 // caches when deallocated, so this test must not share a serialized suite with
 // tests that run after SyncEngine cleanup.
-@Suite("CloudKit metadata bug repro")
-struct CloudKitMetadataBugSuite {
-    // BUG: ensureJournalCloudMetadata does a no-op UPDATE
-    // hoping the SQLiteData trigger recreates metadata, but
-    // it doesn't. When fixed, flip assertion to #expect(has).
-    // See: https://github.com/beforetheshoes/Auralyst/issues/43
+@Suite("CloudKit metadata restoration")
+struct CloudKitMetadataRestorationSuite {
     @MainActor
-    @Test("Deleted journal metadata is not yet restored")
-    func deletedMetadataIsNotRestoredYet() throws {
+    @Test("Deleted journal metadata is restored by ensureJournalCloudMetadata")
+    func deletedMetadataIsRestored() throws {
         try prepareTestDependencies(
             configureSyncEngine: true
         )
@@ -88,10 +84,7 @@ struct CloudKitMetadataBugSuite {
             ) ?? false
         }
 
-        // This asserts current (broken) behavior.
-        // When #43 is fixed, this will fail — change to:
-        // #expect(hasMetadata)
-        #expect(!hasMetadata)
+        #expect(hasMetadata)
     }
 }
 
