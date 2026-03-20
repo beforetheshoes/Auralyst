@@ -267,6 +267,49 @@ extension SyncStatusFeatureTests {
     }
 
     @MainActor
+    @Test("Stall timeout fires at exact boundary (>= not >)")
+    func stallTimeoutAtExactBoundaryFires() async throws {
+        try prepareTestDependencies()
+
+        let timeoutDuration: Duration = .milliseconds(500)
+        let syncingSince = Date(timeIntervalSince1970: 1_704_000_000)
+        // now - syncingSince == exactly timeoutDuration (0.5s)
+        let now = syncingSince.addingTimeInterval(0.5)
+
+        let busyState = SyncEngineClient.State(
+            isRunning: true,
+            isSynchronizing: true,
+            isSendingChanges: true,
+            isFetchingChanges: true
+        )
+
+        let store = TestStore(
+            initialState: SyncStatusFeature.State(
+                status: SyncStatus(
+                    phase: .syncing,
+                    lastSuccessfulSync: nil
+                ),
+                latestState: busyState,
+                syncingSince: syncingSince,
+                shouldStartSync: true,
+                overridePhaseRaw: nil
+            )
+        ) {
+            SyncStatusFeature()
+        } withDependencies: {
+            $0.date.now = now
+            $0.syncStallTimeoutDuration = timeoutDuration
+        }
+
+        // With >=, 0.5 >= 0.5 is true, so phase should promote to upToDate
+        await store.send(.syncStallTimeoutFired) {
+            $0.status.phase = .upToDate
+            $0.status.lastSuccessfulSync = now
+        }
+        await store.finish()
+    }
+
+    @MainActor
     @Test("Background phase does not stop sync engine")
     func backgroundDoesNotStopSyncEngine() async throws {
         try prepareTestDependencies()

@@ -153,6 +153,184 @@ struct MedicationQuickLogWriteTests {
         }
         await testStore.send(.cancelNotifications)
     }
+    @MainActor
+    @Test("unlogScheduledDose failure surfaces error in state")
+    func unlogScheduledDoseErrorSurfaced() async throws {
+        try prepareTestDependencies()
+
+        let dataStore = DataStore()
+        let journal = try dataStore.createJournal()
+        let medication = dataStore.createMedication(
+            for: journal, name: "Vitamin D", defaultAmount: 1, defaultUnit: "pill"
+        )
+        let schedule = makeDailySchedule(medicationID: medication.id)
+
+        let testStore = TestStore(
+            initialState: MedicationQuickLogFeature.State(journalID: journal.id)
+        ) {
+            MedicationQuickLogFeature()
+        } withDependencies: {
+            $0.databaseClient.unlogScheduledDose = { _ in
+                throw NSError(domain: "test", code: 1, userInfo: [
+                    NSLocalizedDescriptionKey: "Unlog failed"
+                ])
+            }
+        }
+        testStore.exhaustivity = .off
+        testStore.dependencies.notificationCenter = NotificationCenter()
+
+        let selectedDate = testStore.state.selectedDate
+        await testStore.send(.unlogScheduledDose(schedule, selectedDate))
+        await testStore.receive(\.unlogResponse.failure) {
+            #expect($0.errorMessage != nil)
+        }
+        await testStore.send(.cancelNotifications)
+    }
+
+    @MainActor
+    @Test("logScheduledDose for as-needed med creates intake with nil scheduleID")
+    func logAsNeededDoseCreatesIntakeWithNilScheduleID() async throws {
+        try prepareTestDependencies()
+
+        let dataStore = DataStore()
+        let journal = try dataStore.createJournal()
+        let medication = dataStore.createMedication(
+            for: journal, name: "Ibuprofen", defaultAmount: 200, defaultUnit: "mg"
+        )
+
+        // As-needed convention: schedule.id == medication.id, not inserted into schedule table
+        let asNeededSchedule = SQLiteMedicationSchedule(
+            id: medication.id,
+            medicationID: medication.id,
+            label: "As Needed",
+            amount: 200,
+            unit: "mg",
+            cadence: "daily",
+            interval: 1,
+            daysOfWeekMask: MedicationWeekday.mask(for: MedicationWeekday.allCases),
+            hour: 9,
+            minute: 0,
+            isActive: true,
+            sortOrder: 0
+        )
+
+        let notificationCenter = NotificationCenter()
+        let testStore = TestStore(
+            initialState: MedicationQuickLogFeature.State(journalID: journal.id)
+        ) {
+            MedicationQuickLogFeature()
+        }
+        testStore.exhaustivity = .off
+        testStore.dependencies.notificationCenter = notificationCenter
+
+        let selectedDate = testStore.state.selectedDate
+        await testStore.send(.logScheduledDose(asNeededSchedule, medication, selectedDate))
+        await testStore.receive(\.logResponse.success)
+
+        @Dependency(\.defaultDatabase) var database
+        let nullScheduleCount = try await database.read { db in
+            try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*) FROM "sqLiteMedicationIntake"
+                    WHERE lower("medicationID") = lower(?)
+                    AND "scheduleID" IS NULL
+                    """,
+                arguments: [medication.id.uuidString]
+            ) ?? 0
+        }
+        #expect(nullScheduleCount == 1)
+        await testStore.send(.cancelNotifications)
+    }
+
+    @MainActor
+    @Test("unlogScheduledDose for as-needed med deletes by timestamp range")
+    func unlogAsNeededDoseDeletesByTimestampRange() async throws {
+        try prepareTestDependencies()
+
+        let dataStore = DataStore()
+        let journal = try dataStore.createJournal()
+        let medication = dataStore.createMedication(
+            for: journal, name: "Ibuprofen", defaultAmount: 200, defaultUnit: "mg"
+        )
+
+        @Dependency(\.defaultDatabase) var database
+        let selectedDate = Calendar.current.startOfDay(for: Date())
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: selectedDate)!
+
+        // Insert intake for today (should be deleted)
+        let todayIntakeID = UUID()
+        try await database.write { db in
+            try insertMedicationIntake(
+                in: db, id: todayIntakeID,
+                medicationID: medication.id, scheduleID: nil,
+                amount: 200, unit: "mg",
+                timestamp: selectedDate.addingTimeInterval(3600),
+                origin: "asNeeded"
+            )
+        }
+
+        // Insert intake for tomorrow (should survive)
+        let tomorrowIntakeID = UUID()
+        try await database.write { db in
+            try insertMedicationIntake(
+                in: db, id: tomorrowIntakeID,
+                medicationID: medication.id, scheduleID: nil,
+                amount: 200, unit: "mg",
+                timestamp: tomorrow.addingTimeInterval(3600),
+                origin: "asNeeded"
+            )
+        }
+
+        // As-needed schedule: id == medicationID
+        let asNeededSchedule = SQLiteMedicationSchedule(
+            id: medication.id,
+            medicationID: medication.id,
+            label: "As Needed",
+            amount: 200,
+            unit: "mg",
+            cadence: "daily",
+            interval: 1,
+            daysOfWeekMask: MedicationWeekday.mask(for: MedicationWeekday.allCases),
+            hour: 9,
+            minute: 0,
+            isActive: true,
+            sortOrder: 0
+        )
+
+        let notificationCenter = NotificationCenter()
+        let testStore = TestStore(
+            initialState: MedicationQuickLogFeature.State(journalID: journal.id)
+        ) {
+            MedicationQuickLogFeature()
+        }
+        testStore.exhaustivity = .off
+        testStore.dependencies.notificationCenter = notificationCenter
+
+        // The snapshot must NOT have the as-needed intake in takenByScheduleID
+        // so the unlog falls through to the timestamp-range branch
+        await testStore.send(.unlogScheduledDose(asNeededSchedule, selectedDate))
+        await testStore.receive(\.unlogResponse.success)
+
+        let todayRemaining = try await database.read { db in
+            try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM \"sqLiteMedicationIntake\" WHERE lower(\"id\") = lower(?)",
+                arguments: [todayIntakeID.uuidString]
+            ) ?? 0
+        }
+        #expect(todayRemaining == 0)
+
+        let tomorrowRemaining = try await database.read { db in
+            try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM \"sqLiteMedicationIntake\" WHERE lower(\"id\") = lower(?)",
+                arguments: [tomorrowIntakeID.uuidString]
+            ) ?? 0
+        }
+        #expect(tomorrowRemaining == 1)
+        await testStore.send(.cancelNotifications)
+    }
 }
 
 private func makeDailySchedule(medicationID: UUID) -> SQLiteMedicationSchedule {
