@@ -81,6 +81,62 @@ func assignMedOps(
         }
     }
 
+    client.loadMedicationForEditor = { medicationID in
+        do {
+            let result = try database.read { db in
+                try loadMedication(medicationID, from: db)
+            }
+            logger.info(
+                "Loaded medication for editor: \(medicationID)"
+            )
+            return result
+        } catch {
+            logger.error(
+                "Error loading medication for editor \(medicationID): \(error.localizedDescription)"
+            )
+            throw error
+        }
+    }
+
+    client.saveMedicationFromEditor = { snapshot in
+        do {
+            try database.write { db in
+                let amountValue = Double(snapshot.defaultAmount)
+                let unitValue = snapshot.defaultUnit.isEmpty ? nil : snapshot.defaultUnit
+                let notesValue = snapshot.notes.isEmpty ? nil : snapshot.notes
+                let useCaseValue = snapshot.useCase.isEmpty ? nil : snapshot.useCase
+                let now = Date()
+
+                let medicationID = try upsertMedication(
+                    in: db,
+                    params: MedicationUpsertParams(
+                        journalID: snapshot.journalID,
+                        medicationID: snapshot.medicationID,
+                        name: snapshot.name,
+                        amount: amountValue,
+                        unit: unitValue,
+                        isAsNeeded: snapshot.isAsNeeded,
+                        useCase: useCaseValue,
+                        notes: notesValue,
+                        timestamp: now
+                    )
+                )
+
+                var drafts = snapshot.scheduleDrafts
+                try syncSchedules(
+                    in: db, medicationID: medicationID,
+                    drafts: &drafts
+                )
+            }
+            logger.info("Saved medication from editor")
+        } catch {
+            logger.error(
+                "Error saving medication from editor: \(error.localizedDescription)"
+            )
+            throw error
+        }
+    }
+
     client.fetchMedications = { journal in
         do {
             let meds = try database.read { db in
@@ -164,6 +220,23 @@ func assignIntakeCreateOps(
         }
     }
 
+    client.createAsNeededIntake = { intake in
+        do {
+            try database.write { db in
+                try SQLiteMedicationIntake
+                    .insert { intake }.execute(db)
+            }
+            logger.info(
+                "Created as-needed intake for: \(intake.medicationID)"
+            )
+        } catch {
+            logger.error(
+                "Error creating as-needed intake: \(error.localizedDescription)"
+            )
+            throw error
+        }
+    }
+
     client.fetchMedicationIntake = { id in
         do {
             let intake = try database.read { db in
@@ -227,6 +300,73 @@ func assignIntakeMutateOps(
                 "Error deleting intake \(intake.id): \(error.localizedDescription)"
             )
             throw error
+        }
+    }
+}
+
+// MARK: - Quick Log Operations
+
+func assignQuickLogOps(
+    to client: inout DatabaseClient,
+    database: any DatabaseWriter,
+    logger: Logger
+) {
+    client.fetchQuickLogSnapshot = { journalID, date in
+        let loader = MedicationQuickLogLoader(database: database)
+        return try loader.load(journalID: journalID, on: date)
+    }
+
+    client.logScheduledDose = { params in
+        let times = MedicationQuickLogFeature.scheduledDateTime(
+            for: params.schedule, on: params.date
+        )
+        let amountValue = params.schedule.amount ?? params.medication.defaultAmount
+        let unitValue = params.schedule.unit ?? params.medication.defaultUnit
+        try database.write { db in
+            let persistedScheduleID = try scheduleIDToPersist(
+                scheduleID: params.schedule.id, db: db
+            )
+            try insertMedicationIntake(
+                in: db,
+                medicationID: params.schedule.medicationID,
+                scheduleID: persistedScheduleID,
+                amount: amountValue,
+                unit: unitValue,
+                timestamp: times.timestamp,
+                scheduledDate: times.scheduledDate,
+                origin: "scheduled"
+            )
+        }
+    }
+
+    client.unlogScheduledDose = { params in
+        if let intake = params.snapshot.takenByScheduleID[params.schedule.id] {
+            try database.write { db in
+                try db.execute(
+                    sql: """
+                        DELETE FROM "sqLiteMedicationIntake"
+                        WHERE lower("id") = lower(?)
+                        """,
+                    arguments: [intake.id.uuidString]
+                )
+            }
+        } else if params.schedule.id == params.schedule.medicationID {
+            let bounds = MedicationQuickLogFeature.dayBounds(for: params.date)
+            try database.write { db in
+                try db.execute(
+                    sql: """
+                        DELETE FROM "sqLiteMedicationIntake"
+                        WHERE lower("medicationID") = lower(?)
+                        AND "timestamp" >= ? AND "timestamp" < ?
+                        AND "scheduleID" IS NULL
+                        """,
+                    arguments: [
+                        params.schedule.medicationID.uuidString,
+                        bounds.start,
+                        bounds.end
+                    ]
+                )
+            }
         }
     }
 }

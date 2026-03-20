@@ -1,7 +1,6 @@
 import ComposableArchitecture
 import Dependencies
 import Foundation
-@preconcurrency import SQLiteData
 
 @Reducer
 struct MedicationEditorFeature {
@@ -80,7 +79,8 @@ struct MedicationEditorFeature {
         var drafts: [ScheduleDraft]
     }
 
-    @Dependency(\.defaultDatabase) private var database
+    @Dependency(\.databaseClient) private var databaseClient
+    @Dependency(\.notificationCenter) private var notificationCenter
 
     var body: some Reducer<State, Action> {
         BindingReducer()
@@ -93,15 +93,13 @@ struct MedicationEditorFeature {
                 guard let medicationID = state.medicationID,
                       !state.isLoading else { return .none }
                 state.isLoading = true
-                return .run { send in
+                return .run { [databaseClient] send in
                     await send(
                         .loadResponse(
                             TaskResult {
-                                try database.read { db in
-                                    try loadMedication(
-                                        medicationID, from: db
-                                    )
-                                }
+                                try databaseClient.loadMedicationForEditor(
+                                    medicationID
+                                )
                             }
                         )
                     )
@@ -150,38 +148,23 @@ struct MedicationEditorFeature {
             case .saveTapped:
                 guard !state.name.isEmpty, !state.isSaving else { return .none }
                 state.isSaving = true
-                let snapshot = state
-                return .run { send in
+                let snapshot = MedicationEditorSnapshot(
+                    journalID: state.journalID,
+                    medicationID: state.medicationID,
+                    name: state.name,
+                    defaultAmount: state.defaultAmount,
+                    defaultUnit: state.defaultUnit,
+                    isAsNeeded: state.isAsNeeded,
+                    useCase: state.useCase,
+                    notes: state.notes,
+                    scheduleDrafts: state.scheduleDrafts
+                )
+                return .run { [databaseClient, notificationCenter] send in
                     await send(
                         .saveResponse(
                             TaskResult {
-                                try database.write { db in
-                                    let amountValue = Double(snapshot.defaultAmount)
-                                    let unitValue = snapshot.defaultUnit.isEmpty ? nil : snapshot.defaultUnit
-                                    let notesValue = snapshot.notes.isEmpty ? nil : snapshot.notes
-                                    let useCaseValue = snapshot.useCase.isEmpty ? nil : snapshot.useCase
-                                    let now = Date()
-
-                                    let medicationID = try upsertMedication(
-                                        in: db,
-                                        params: MedicationUpsertParams(
-                                            journalID: snapshot.journalID,
-                                            medicationID: snapshot.medicationID,
-                                            name: snapshot.name,
-                                            amount: amountValue,
-                                            unit: unitValue,
-                                            isAsNeeded: snapshot.isAsNeeded,
-                                            useCase: useCaseValue,
-                                            notes: notesValue,
-                                            timestamp: now
-                                        )
-                                    )
-
-                                    var drafts = snapshot.scheduleDrafts
-                                    try syncSchedules(in: db, medicationID: medicationID, drafts: &drafts)
-
-                                    NotificationCenter.default.post(name: .medicationsDidChange, object: nil)
-                                }
+                                try databaseClient.saveMedicationFromEditor(snapshot)
+                                notificationCenter.post(name: .medicationsDidChange, object: nil)
                             }
                         )
                     )
@@ -203,22 +186,12 @@ struct MedicationEditorFeature {
 
             case .deleteConfirmed:
                 guard let medicationID = state.medicationID else { return .none }
-                return .run { send in
+                return .run { [databaseClient, notificationCenter] send in
                     await send(
                         .deleteResponse(
                             TaskResult {
-                                try database.write { db in
-                                    try SQLiteMedicationSchedule
-                                        .where { $0.medicationID.eq(medicationID) }
-                                        .delete()
-                                        .execute(db)
-                                    try SQLiteMedicationIntake
-                                        .where { $0.medicationID.eq(medicationID) }
-                                        .delete()
-                                        .execute(db)
-                                    try SQLiteMedication.find(medicationID).delete().execute(db)
-                                }
-                                NotificationCenter.default.post(name: .medicationsDidChange, object: nil)
+                                try databaseClient.deleteMedication(medicationID)
+                                notificationCenter.post(name: .medicationsDidChange, object: nil)
                             }
                         )
                     )

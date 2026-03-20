@@ -1,7 +1,6 @@
 import ComposableArchitecture
 import Dependencies
 import Foundation
-import GRDB
 
 @Reducer
 struct ImportFeature {
@@ -37,7 +36,7 @@ struct ImportFeature {
     }
 
     @Dependency(\.importClient) private var importClient
-    @Dependency(\.defaultDatabase) private var database
+    @Dependency(\.databaseClient) private var databaseClient
     @Dependency(\.notificationCenter) private var notificationCenter
 
     var body: some Reducer<State, Action> {
@@ -59,13 +58,11 @@ struct ImportFeature {
             case .importTapped:
                 guard !state.isImporting else { return .none }
                 guard state.selectedFileURL != nil else { return .none }
-                return .run { send in
+                return .run { [databaseClient] send in
                     await send(
                         .checkExistingJournalResponse(
                             TaskResult {
-                                try database.read { db in
-                                    (try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sqLiteJournal") ?? 0) > 0
-                                }
+                                try databaseClient.hasExistingJournal()
                             }
                         )
                     )

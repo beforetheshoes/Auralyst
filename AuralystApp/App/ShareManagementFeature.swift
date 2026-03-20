@@ -32,7 +32,7 @@ struct ShareManagementFeature {
         case setSharedRecord(SharedRecord?)
     }
 
-    @Dependency(\.defaultDatabase) private var database
+    @Dependency(\.databaseClient) private var databaseClient
     @Dependency(\.syncEngine) private var syncEngine
 
     var body: some Reducer<State, Action> {
@@ -42,18 +42,11 @@ struct ShareManagementFeature {
                 state.isLoading = true
                 state.errorMessage = nil
                 let journalID = state.journal.id
-                return .run { send in
+                return .run { [databaseClient] send in
                     await send(
                         .refreshResponse(
                             TaskResult {
-                                try await database.read { db in
-                                    guard let journal = try SQLiteJournal.find(journalID).fetchOne(db)
-                                    else { return false }
-                                    return try SyncMetadata
-                                        .find(journal.syncMetadataID)
-                                        .select(\.isShared)
-                                        .fetchOne(db) ?? false
-                                } ?? false
+                                try databaseClient.fetchJournalIsShared(journalID)
                             }
                         )
                     )

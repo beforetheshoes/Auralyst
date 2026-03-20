@@ -1,5 +1,4 @@
 import Foundation
-import Dependencies
 import GRDB
 @preconcurrency import SQLiteData
 
@@ -16,7 +15,7 @@ struct MedicationQuickLogSnapshot: Equatable {
 }
 
 struct MedicationQuickLogLoader {
-    @Dependency(\.defaultDatabase) private var database
+    let database: any DatabaseWriter
 
     func load(journalID: UUID, on date: Date) throws -> MedicationQuickLogSnapshot {
         let medications = try database.read { db in

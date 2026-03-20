@@ -33,6 +33,7 @@ struct SymptomEntryEditorFeature {
     }
 
     @Dependency(\.databaseClient) private var databaseClient
+    @Dependency(\.notificationCenter) private var notificationCenter
 
     var body: some Reducer<State, Action> {
         BindingReducer()
@@ -77,12 +78,12 @@ struct SymptomEntryEditorFeature {
                     sentimentLabel: entry.sentimentLabel,
                     sentimentScore: entry.sentimentScore
                 )
-                return .run { send in
+                return .run { [databaseClient, notificationCenter] send in
                     await send(
                         .saveResponse(
                             TaskResult {
                                 try databaseClient.updateSymptomEntry(updatedEntry)
-                                NotificationCenter.default.post(
+                                notificationCenter.post(
                                     name: .symptomEntriesDidChange, object: nil
                                 )
                             }
@@ -105,12 +106,12 @@ struct SymptomEntryEditorFeature {
             case .deleteConfirmed:
                 guard let entry = state.entry else { return .none }
                 let entryID = entry.id
-                return .run { send in
+                return .run { [databaseClient, notificationCenter] send in
                     await send(
                         .deleteResponse(
                             TaskResult {
                                 try databaseClient.deleteSymptomEntry(entryID)
-                                NotificationCenter.default.post(
+                                notificationCenter.post(
                                     name: .symptomEntriesDidChange, object: nil
                                 )
                             }

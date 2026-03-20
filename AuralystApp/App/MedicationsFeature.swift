@@ -21,6 +21,7 @@ struct MedicationsFeature {
     }
 
     @Dependency(\.databaseClient) private var databaseClient
+    @Dependency(\.notificationCenter) private var notificationCenter
 
     var body: some Reducer<State, Action> {
         Reduce { state, action in
@@ -32,12 +33,12 @@ struct MedicationsFeature {
                 state.editorMode = .edit(id)
                 return .none
             case .deleteMedication(let id):
-                return .run { [databaseClient] send in
+                return .run { [databaseClient, notificationCenter] send in
                     await send(
                         .deleteResponse(
                             TaskResult {
                                 try databaseClient.deleteMedication(id)
-                                NotificationCenter.default.post(
+                                notificationCenter.post(
                                     name: .medicationsDidChange,
                                     object: nil
                                 )

@@ -104,6 +104,39 @@ struct MedicationsFeatureTests {
         }
     }
 
+    @MainActor
+    @Test("deleteMedication posts medicationsDidChange to injected center")
+    func deleteMedicationPostsNotification() async throws {
+        try prepareTestDependencies()
+
+        let store = DataStore()
+        let journal = try store.createJournal()
+        let medication = store.createMedication(
+            for: journal, name: "Melatonin",
+            defaultAmount: 5, defaultUnit: "mg"
+        )
+
+        let notificationCenter = NotificationCenter()
+        let posted = LockIsolated(false)
+        let token = notificationCenter.addObserver(
+            forName: .medicationsDidChange, object: nil, queue: nil
+        ) { _ in posted.withValue { $0 = true } }
+        defer { notificationCenter.removeObserver(token) }
+
+        let testStore = TestStore(
+            initialState: MedicationsFeature.State(journal: journal)
+        ) {
+            MedicationsFeature()
+        }
+        testStore.exhaustivity = .off
+        testStore.dependencies.notificationCenter = notificationCenter
+
+        await testStore.send(.deleteMedication(medication.id))
+        await testStore.receive(\.deleteResponse.success)
+
+        #expect(posted.value == true)
+    }
+
     private func seedScheduleAndIntake(
         medicationID: UUID,
         database: any DatabaseWriter

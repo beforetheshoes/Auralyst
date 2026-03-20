@@ -40,7 +40,7 @@ struct MedicationQuickLogLoaderSuite {
         )
         try insertSchedule(schedule, database: database)
 
-        let loader = MedicationQuickLogLoader()
+        let loader = MedicationQuickLogLoader(database: database)
         let snapshot = try loader.load(
             journalID: journal.id, on: Date()
         )
@@ -64,11 +64,12 @@ struct MedicationQuickLogLoaderSuite {
                 )
             } operation: {
                 @Dependency(\.databaseClient) var client
+                @Dependency(\.defaultDatabase) var database
                 let journal = try client.createJournal()
                 let medication = client.createMedication(
                     journal, "Melatonin", 3, "mg"
                 )
-                let loader = MedicationQuickLogLoader()
+                let loader = MedicationQuickLogLoader(database: database)
                 let snapshot = try loader.load(
                     journalID: journal.id, on: Date()
                 )
@@ -112,7 +113,7 @@ struct MedicationQuickLogLoaderSuite {
             try db.execute(sql: "PRAGMA foreign_keys = ON")
         }
 
-        let loader = MedicationQuickLogLoader()
+        let loader = MedicationQuickLogLoader(database: database)
         let snapshot = try loader.load(
             journalID: journal.id, on: now
         )
@@ -127,6 +128,7 @@ struct MedicationQuickLogLoaderSuite {
     func loaderReturnsEmptyForUnknownJournal() throws {
         try prepareTestDependencies()
 
+        @Dependency(\.defaultDatabase) var database
         let store = DataStore()
         let journal = try store.createJournal()
         _ = store.createMedication(
@@ -134,7 +136,7 @@ struct MedicationQuickLogLoaderSuite {
             defaultAmount: 1, defaultUnit: "pill"
         )
 
-        let loader = MedicationQuickLogLoader()
+        let loader = MedicationQuickLogLoader(database: database)
         let snapshot = try loader.load(
             journalID: UUID(), on: Date()
         )
@@ -169,7 +171,7 @@ struct MedicationQuickLogLoaderSuite {
             dayStart: dayStart
         )
 
-        let loader = MedicationQuickLogLoader()
+        let loader = MedicationQuickLogLoader(database: database)
         let snapshot = try loader.load(
             journalID: fx.journal.id, on: baseDate
         )

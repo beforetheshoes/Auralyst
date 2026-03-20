@@ -108,6 +108,7 @@ func buildTestDatabaseClient(
     assignMedOps(to: &client, database: database, logger: logger)
     assignIntakeCreateOps(to: &client, database: database, logger: logger)
     assignIntakeMutateOps(to: &client, database: database, logger: logger)
+    assignQuickLogOps(to: &client, database: database, logger: logger)
 
     return client
 }
