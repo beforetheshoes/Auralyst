@@ -187,6 +187,11 @@ struct MedicationQuickLogWriteTests {
         await testStore.send(.cancelNotifications)
     }
 
+}
+
+// MARK: - As-needed dose tests
+
+extension MedicationQuickLogWriteTests {
     @MainActor
     @Test("logScheduledDose for as-needed med creates intake with nil scheduleID")
     func logAsNeededDoseCreatesIntakeWithNilScheduleID() async throws {
@@ -196,22 +201,6 @@ struct MedicationQuickLogWriteTests {
         let journal = try dataStore.createJournal()
         let medication = dataStore.createMedication(
             for: journal, name: "Ibuprofen", defaultAmount: 200, defaultUnit: "mg"
-        )
-
-        // As-needed convention: schedule.id == medication.id, not inserted into schedule table
-        let asNeededSchedule = SQLiteMedicationSchedule(
-            id: medication.id,
-            medicationID: medication.id,
-            label: "As Needed",
-            amount: 200,
-            unit: "mg",
-            cadence: "daily",
-            interval: 1,
-            daysOfWeekMask: MedicationWeekday.mask(for: MedicationWeekday.allCases),
-            hour: 9,
-            minute: 0,
-            isActive: true,
-            sortOrder: 0
         )
 
         let notificationCenter = NotificationCenter()
@@ -224,7 +213,8 @@ struct MedicationQuickLogWriteTests {
         testStore.dependencies.notificationCenter = notificationCenter
 
         let selectedDate = testStore.state.selectedDate
-        await testStore.send(.logScheduledDose(asNeededSchedule, medication, selectedDate))
+        let schedule = makeAsNeededSchedule(medicationID: medication.id)
+        await testStore.send(.logScheduledDose(schedule, medication, selectedDate))
         await testStore.receive(\.logResponse.success)
 
         @Dependency(\.defaultDatabase) var database
@@ -258,44 +248,11 @@ struct MedicationQuickLogWriteTests {
         let selectedDate = Calendar.current.startOfDay(for: Date())
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: selectedDate)!
 
-        // Insert intake for today (should be deleted)
-        let todayIntakeID = UUID()
-        try await database.write { db in
-            try insertMedicationIntake(
-                in: db, id: todayIntakeID,
-                medicationID: medication.id, scheduleID: nil,
-                amount: 200, unit: "mg",
-                timestamp: selectedDate.addingTimeInterval(3600),
-                origin: "asNeeded"
-            )
-        }
-
-        // Insert intake for tomorrow (should survive)
-        let tomorrowIntakeID = UUID()
-        try await database.write { db in
-            try insertMedicationIntake(
-                in: db, id: tomorrowIntakeID,
-                medicationID: medication.id, scheduleID: nil,
-                amount: 200, unit: "mg",
-                timestamp: tomorrow.addingTimeInterval(3600),
-                origin: "asNeeded"
-            )
-        }
-
-        // As-needed schedule: id == medicationID
-        let asNeededSchedule = SQLiteMedicationSchedule(
-            id: medication.id,
+        let (todayIntakeID, tomorrowIntakeID) = try await insertAsNeededIntakes(
             medicationID: medication.id,
-            label: "As Needed",
-            amount: 200,
-            unit: "mg",
-            cadence: "daily",
-            interval: 1,
-            daysOfWeekMask: MedicationWeekday.mask(for: MedicationWeekday.allCases),
-            hour: 9,
-            minute: 0,
-            isActive: true,
-            sortOrder: 0
+            today: selectedDate,
+            tomorrow: tomorrow,
+            database: database
         )
 
         let notificationCenter = NotificationCenter()
@@ -309,27 +266,81 @@ struct MedicationQuickLogWriteTests {
 
         // The snapshot must NOT have the as-needed intake in takenByScheduleID
         // so the unlog falls through to the timestamp-range branch
-        await testStore.send(.unlogScheduledDose(asNeededSchedule, selectedDate))
+        let schedule = makeAsNeededSchedule(medicationID: medication.id)
+        await testStore.send(.unlogScheduledDose(schedule, selectedDate))
         await testStore.receive(\.unlogResponse.success)
 
-        let todayRemaining = try await database.read { db in
-            try Int.fetchOne(
-                db,
-                sql: "SELECT COUNT(*) FROM \"sqLiteMedicationIntake\" WHERE lower(\"id\") = lower(?)",
-                arguments: [todayIntakeID.uuidString]
-            ) ?? 0
-        }
+        let todayRemaining = try await intakeCount(id: todayIntakeID, database: database)
         #expect(todayRemaining == 0)
 
-        let tomorrowRemaining = try await database.read { db in
-            try Int.fetchOne(
-                db,
-                sql: "SELECT COUNT(*) FROM \"sqLiteMedicationIntake\" WHERE lower(\"id\") = lower(?)",
-                arguments: [tomorrowIntakeID.uuidString]
-            ) ?? 0
-        }
+        let tomorrowRemaining = try await intakeCount(id: tomorrowIntakeID, database: database)
         #expect(tomorrowRemaining == 1)
         await testStore.send(.cancelNotifications)
+    }
+}
+
+// MARK: - Private helpers
+
+private func makeAsNeededSchedule(
+    medicationID: UUID
+) -> SQLiteMedicationSchedule {
+    // As-needed convention: schedule.id == medication.id, not in schedule table
+    SQLiteMedicationSchedule(
+        id: medicationID,
+        medicationID: medicationID,
+        label: "As Needed",
+        amount: 200,
+        unit: "mg",
+        cadence: "daily",
+        interval: 1,
+        daysOfWeekMask: MedicationWeekday.mask(for: MedicationWeekday.allCases),
+        hour: 9,
+        minute: 0,
+        isActive: true,
+        sortOrder: 0
+    )
+}
+
+private func insertAsNeededIntakes(
+    medicationID: UUID,
+    today: Date,
+    tomorrow: Date,
+    database: any DatabaseWriter
+) async throws -> (todayID: UUID, tomorrowID: UUID) {
+    let todayID = UUID()
+    let tomorrowID = UUID()
+    try await database.write { db in
+        try insertMedicationIntake(
+            in: db, id: todayID,
+            medicationID: medicationID, scheduleID: nil,
+            amount: 200, unit: "mg",
+            timestamp: today.addingTimeInterval(3600),
+            origin: "asNeeded"
+        )
+        try insertMedicationIntake(
+            in: db, id: tomorrowID,
+            medicationID: medicationID, scheduleID: nil,
+            amount: 200, unit: "mg",
+            timestamp: tomorrow.addingTimeInterval(3600),
+            origin: "asNeeded"
+        )
+    }
+    return (todayID, tomorrowID)
+}
+
+private func intakeCount(
+    id: UUID,
+    database: any DatabaseWriter
+) async throws -> Int {
+    try await database.read { db in
+        try Int.fetchOne(
+            db,
+            sql: """
+                SELECT COUNT(*) FROM "sqLiteMedicationIntake"
+                WHERE lower("id") = lower(?)
+                """,
+            arguments: [id.uuidString]
+        ) ?? 0
     }
 }
 
