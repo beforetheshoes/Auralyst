@@ -191,6 +191,99 @@ extension DataStoreSuite {
     }
 }
 
+// MARK: - Journal Cascade Tests
+
+extension DataStoreSuite {
+    @MainActor
+    @Test("Deleting a journal cascades to all child records")
+    func deleteJournalCascadesToChildren() throws {
+        try prepareTestDependencies()
+
+        @Dependency(\.defaultDatabase) var database
+        let store = DataStore()
+        let journal = store.createJournal()
+        let entry = try store.createSymptomEntry(
+            for: journal, severity: 3, note: "Test"
+        )
+        let medication = store.createMedication(
+            for: journal, name: "Aspirin",
+            defaultAmount: 1, defaultUnit: "tablet"
+        )
+        try insertJournalCascadeChildren(
+            journal: journal, entry: entry,
+            medication: medication, database: database
+        )
+
+        // Delete the journal directly via SQL to test
+        // ON DELETE CASCADE at the database level.
+        try database.write { db in
+            try db.execute(
+                sql: "DELETE FROM sqLiteJournal WHERE id = ?",
+                arguments: [journal.id.uuidString.lowercased()]
+            )
+        }
+
+        try assertAllChildrenDeleted(database: database)
+    }
+}
+
+private func insertJournalCascadeChildren(
+    journal: SQLiteJournal,
+    entry: SQLiteSymptomEntry,
+    medication: SQLiteMedication,
+    database: any DatabaseWriter
+) throws {
+    let schedule = makeAllDaysSchedule(
+        for: medication, label: "Morning", hour: 8, minute: 0
+    )
+    try database.write { db in
+        try insertSchedule(schedule, in: db)
+        try insertIntake(
+            SQLiteMedicationIntake(
+                medicationID: medication.id,
+                entryID: entry.id,
+                amount: 1, unit: "tablet", timestamp: .now
+            ),
+            in: db
+        )
+        try db.execute(
+            sql: """
+                INSERT INTO sqLiteCollaboratorNote
+                (id, journalID, entryID, authorName, text, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+            arguments: [
+                UUID().uuidString.lowercased(),
+                journal.id.uuidString.lowercased(),
+                entry.id.uuidString.lowercased(),
+                "Test Author", "Test note",
+                ISO8601DateFormatter().string(from: .now)
+            ]
+        )
+    }
+}
+
+private func assertAllChildrenDeleted(
+    database: any DatabaseReader
+) throws {
+    let tables = [
+        "sqLiteSymptomEntry", "sqLiteMedication",
+        "sqLiteMedicationIntake", "sqLiteMedicationSchedule",
+        "sqLiteCollaboratorNote"
+    ]
+    for table in tables {
+        let count = try database.read { db in
+            try Int.fetchOne(
+                db, sql: "SELECT COUNT(*) FROM \(table)"
+            ) ?? 0
+        }
+        #expect(
+            count == 0,
+            "Expected \(table) empty after journal delete, got \(count) rows"
+        )
+    }
+}
+
 // MARK: - Helper Functions
 
 private func makeWeekdaySchedule(
@@ -251,14 +344,9 @@ private func makeLinkedIntake(
         medicationID: medication.id,
         entryID: entry.id,
         scheduleID: schedule.id,
-        amount: 1,
-        unit: "tablet",
-        timestamp: Date(
-            timeIntervalSince1970: 1_726_000_000
-        ),
-        scheduledDate: Date(
-            timeIntervalSince1970: 1_725_936_000
-        ),
+        amount: 1, unit: "tablet",
+        timestamp: Date(timeIntervalSince1970: 1_726_000_000),
+        scheduledDate: Date(timeIntervalSince1970: 1_725_936_000),
         origin: "scheduled",
         notes: "Logged from quick checkmark"
     )
@@ -267,29 +355,19 @@ private func makeLinkedIntake(
 private func assertCascadeDeleted(
     medicationID: UUID, database: DatabaseWriter
 ) throws {
+    let args: StatementArguments = [medicationID.uuidString]
     let scheduleCount = try database.read { db in
-        try Int.fetchOne(
-            db,
-            sql: """
-                SELECT COUNT(*)
-                FROM sqLiteMedicationSchedule
-                WHERE medicationID = ?
-                """,
-            arguments: [medicationID.uuidString]
-        ) ?? 0
+        try Int.fetchOne(db, sql: """
+            SELECT COUNT(*) FROM sqLiteMedicationSchedule
+            WHERE medicationID = ?
+            """, arguments: args) ?? 0
     }
     #expect(scheduleCount == 0)
-
     let intakeCount = try database.read { db in
-        try Int.fetchOne(
-            db,
-            sql: """
-                SELECT COUNT(*)
-                FROM sqLiteMedicationIntake
-                WHERE medicationID = ?
-                """,
-            arguments: [medicationID.uuidString]
-        ) ?? 0
+        try Int.fetchOne(db, sql: """
+            SELECT COUNT(*) FROM sqLiteMedicationIntake
+            WHERE medicationID = ?
+            """, arguments: args) ?? 0
     }
     #expect(intakeCount == 0)
 }

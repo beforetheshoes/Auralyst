@@ -98,7 +98,9 @@ struct MedicationQuickLogLoaderSuite {
         )
         let now = Date()
 
-        try database.write { db in
+        // PRAGMA foreign_keys is a no-op inside a transaction, so
+        // use writeWithoutTransaction to toggle it around the delete.
+        try database.writeWithoutTransaction { db in
             try db.execute(sql: "PRAGMA foreign_keys = OFF")
             try db.execute(
                 sql: """

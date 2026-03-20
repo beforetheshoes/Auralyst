@@ -7,7 +7,7 @@ import os.log
 func appDatabase() throws -> any DatabaseWriter {
     @Dependency(\.context) var context
     var configuration = Configuration()
-    configuration.foreignKeysEnabled = false
+    configuration.foreignKeysEnabled = true
 
     let containerID = SQLiteCloudKitConfig.containerIdentifier
     configuration.prepareDatabase { db in
@@ -28,6 +28,12 @@ func appDatabase() throws -> any DatabaseWriter {
     let database = try defaultDatabase(configuration: configuration)
     print("open '\(database.path)'")
 
+    // In DEBUG builds, erase and recreate the database when the
+    // schema changes so developers always start fresh. In production
+    // (eraseDatabaseOnSchemaChange defaults to false), DatabaseMigrator
+    // runs registered migrations in order and throws if a previously
+    // applied migration is missing. Never remove or reorder existing
+    // migrations; always append new ones.
     var migrator = DatabaseMigrator()
     #if DEBUG
     migrator.eraseDatabaseOnSchemaChange = true
@@ -35,6 +41,10 @@ func appDatabase() throws -> any DatabaseWriter {
 
     migrator.registerMigration("Create tables v2") { db in
         try createTablesV2(in: db)
+    }
+
+    migrator.registerMigration("Clean orphaned records v1") { db in
+        try cleanOrphanedRecords(in: db)
     }
 
     try migrator.migrate(database)
@@ -138,6 +148,41 @@ private func createSupportTables(in db: Database) throws {
             FOREIGN KEY ("medicationID") REFERENCES "sqLiteMedication"("id") ON DELETE CASCADE
         ) STRICT
     """).execute(db)
+}
+
+private func cleanOrphanedRecords(in db: Database) throws {
+    // Clean orphans bottom-up (leaf tables first) so deletes
+    // cannot themselves violate FK constraints.
+    try db.execute(sql: """
+        DELETE FROM sqLiteMedicationIntake
+        WHERE medicationID NOT IN (SELECT id FROM sqLiteMedication)
+    """)
+    try db.execute(sql: """
+        UPDATE sqLiteMedicationIntake SET entryID = NULL
+        WHERE entryID IS NOT NULL
+        AND entryID NOT IN (SELECT id FROM sqLiteSymptomEntry)
+    """)
+    try db.execute(sql: """
+        DELETE FROM sqLiteMedicationSchedule
+        WHERE medicationID NOT IN (SELECT id FROM sqLiteMedication)
+    """)
+    try db.execute(sql: """
+        DELETE FROM sqLiteCollaboratorNote
+        WHERE journalID NOT IN (SELECT id FROM sqLiteJournal)
+    """)
+    try db.execute(sql: """
+        UPDATE sqLiteCollaboratorNote SET entryID = NULL
+        WHERE entryID IS NOT NULL
+        AND entryID NOT IN (SELECT id FROM sqLiteSymptomEntry)
+    """)
+    try db.execute(sql: """
+        DELETE FROM sqLiteSymptomEntry
+        WHERE journalID NOT IN (SELECT id FROM sqLiteJournal)
+    """)
+    try db.execute(sql: """
+        DELETE FROM sqLiteMedication
+        WHERE journalID NOT IN (SELECT id FROM sqLiteJournal)
+    """)
 }
 
 // Avoid MainActor logger in nonisolated contexts; use print for now.

@@ -106,6 +106,9 @@ private func deleteMedicationImpl(
     logger: Logger
 ) throws {
     do {
+        // Belt-and-suspenders: ON DELETE CASCADE handles this at
+        // the schema level; manual cleanup retained for defense
+        // in depth.
         try database.write { db in
             try SQLiteMedicationSchedule
                 .where { $0.medicationID.eq(medicationID) }

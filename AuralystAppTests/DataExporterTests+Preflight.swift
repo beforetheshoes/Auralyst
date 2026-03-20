@@ -198,31 +198,36 @@ private func corruptReferences(
 ) throws {
     let invalidEntryID = UUID()
     let invalidScheduleID = UUID()
-    try database.write { db in
+    // PRAGMA foreign_keys is a no-op inside a transaction, so
+    // use writeWithoutTransaction to toggle it around the writes.
+    try database.writeWithoutTransaction { db in
         try db.execute(sql: "PRAGMA foreign_keys = OFF")
-        try db.execute(
-            sql: """
-                UPDATE sqLiteMedicationIntake
-                SET scheduleID = ?, entryID = ?
-                WHERE lower(id) = lower(?)
-                """,
-            arguments: [
-                invalidScheduleID.uuidString,
-                invalidEntryID.uuidString,
-                intakeID.uuidString
-            ]
-        )
-        try db.execute(
-            sql: """
-                UPDATE sqLiteCollaboratorNote
-                SET entryID = ?
-                WHERE lower(id) = lower(?)
-                """,
-            arguments: [
-                invalidEntryID.uuidString,
-                noteID.uuidString
-            ]
-        )
+        try db.inTransaction(.deferred) {
+            try db.execute(
+                sql: """
+                    UPDATE sqLiteMedicationIntake
+                    SET scheduleID = ?, entryID = ?
+                    WHERE lower(id) = lower(?)
+                    """,
+                arguments: [
+                    invalidScheduleID.uuidString,
+                    invalidEntryID.uuidString,
+                    intakeID.uuidString
+                ]
+            )
+            try db.execute(
+                sql: """
+                    UPDATE sqLiteCollaboratorNote
+                    SET entryID = ?
+                    WHERE lower(id) = lower(?)
+                    """,
+                arguments: [
+                    invalidEntryID.uuidString,
+                    noteID.uuidString
+                ]
+            )
+            return .commit
+        }
         try db.execute(sql: "PRAGMA foreign_keys = ON")
     }
 }

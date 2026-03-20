@@ -134,9 +134,9 @@ private func insertLinkedRecords(
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
             arguments: [
-                note.id.uuidString,
-                journal.id.uuidString,
-                entry.id.uuidString,
+                note.id.uuidString.lowercased(),
+                journal.id.uuidString.lowercased(),
+                entry.id.uuidString.lowercased(),
                 note.authorName,
                 note.text,
                 ts
