@@ -15,7 +15,7 @@ extension DataStoreSuite {
 
         @Dependency(\.defaultDatabase) var database
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         let entry = try store.createSymptomEntry(
             for: journal, severity: 6, note: "Headache"
         )
@@ -73,7 +73,7 @@ extension DataStoreSuite {
 
         @Dependency(\.defaultDatabase) var database
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         let entry = try store.createSymptomEntry(
             for: journal, severity: 2
         )

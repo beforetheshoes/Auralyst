@@ -13,8 +13,8 @@ extension DataExporterSuite {
         try prepareTestDependencies()
 
         let store = DataStore()
-        let journalA = store.createJournal()
-        let journalB = store.createJournal()
+        let journalA = try store.createJournal()
+        let journalB = try store.createJournal()
 
         let entryA = try store.createSymptomEntry(
             for: journalA, severity: 2
@@ -127,8 +127,8 @@ private func insertFilterSchedule(
 @MainActor
 private func createFilterFixture() throws -> SQLiteJournal {
     let store = DataStore()
-    let journalA = store.createJournal()
-    let journalB = store.createJournal()
+    let journalA = try store.createJournal()
+    let journalB = try store.createJournal()
 
     let medicationA = store.createMedication(
         for: journalA, name: "Cetirizine",

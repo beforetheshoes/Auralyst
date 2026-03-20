@@ -26,8 +26,8 @@ final class DataStore: Observable {
 
     // MARK: - Journal Operations
 
-    func createJournal() -> SQLiteJournal {
-        databaseClient.createJournal()
+    func createJournal() throws -> SQLiteJournal {
+        try databaseClient.createJournal()
     }
 
     func fetchJournals() -> [SQLiteJournal] {

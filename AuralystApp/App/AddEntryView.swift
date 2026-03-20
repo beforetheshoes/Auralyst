@@ -76,7 +76,7 @@ struct AddEntryView: View {
 
 #Preview("Add Entry") {
     withPreviewDataStore {
-        let journal = DependencyValues._current.databaseClient.createJournal()
+        let journal = previewValue { try DependencyValues._current.databaseClient.createJournal() }
         AddEntryView(
             store: Store(initialState: AddEntryFeature.State(journalID: journal.id)) {
                 AddEntryFeature()

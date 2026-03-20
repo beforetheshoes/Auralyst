@@ -23,7 +23,7 @@ final class TestDependencyBootstrapTests: XCTestCase {
         }
 
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
 
         try await DependencyValues._current.syncEngine.start()
 

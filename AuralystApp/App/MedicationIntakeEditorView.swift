@@ -89,7 +89,7 @@ struct MedicationIntakeEditorView: View {
 #Preview("Medication Intake Editor") {
     withPreviewDataStore {
         let databaseClient = DependencyValues._current.databaseClient
-        let journal = databaseClient.createJournal()
+        let journal = previewValue { try databaseClient.createJournal() }
         let medication = databaseClient.createMedication(journal, "Ibuprofen", nil, nil)
         let intake = previewValue { try databaseClient.createMedicationIntake(medication, 200, "mg") }
 

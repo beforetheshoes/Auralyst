@@ -12,7 +12,7 @@ struct DataExporterSuite {
         try prepareTestDependencies()
 
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         let entry = try store.createSymptomEntry(
             for: journal,
             severity: 6,
@@ -63,7 +63,7 @@ struct DataExporterSuite {
         try prepareTestDependencies()
 
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         _ = try store.createSymptomEntry(
             for: journal,
             severity: 4,
@@ -104,7 +104,7 @@ struct DataExporterSuite {
         try prepareTestDependencies()
 
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         _ = try store.createSymptomEntry(
             for: journal,
             severity: 8,

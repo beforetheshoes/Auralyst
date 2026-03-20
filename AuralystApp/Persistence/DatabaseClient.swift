@@ -5,7 +5,7 @@ import os.log
 @preconcurrency import SQLiteData
 
 struct DatabaseClient: Sendable {
-    var createJournal: @Sendable () -> SQLiteJournal
+    var createJournal: @Sendable () throws -> SQLiteJournal
     var fetchJournals: @Sendable () -> [SQLiteJournal]
     var fetchJournal: @Sendable (_ id: UUID) -> SQLiteJournal?
     var createSymptomEntry: @Sendable (

@@ -138,7 +138,7 @@ private struct PreflightFixture {
 private func createPreflightFixture(
 ) throws -> PreflightFixture {
     let store = DataStore()
-    let journal = store.createJournal()
+    let journal = try store.createJournal()
     let entry = try store.createSymptomEntry(
         for: journal, severity: 5
     )

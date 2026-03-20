@@ -18,6 +18,7 @@ struct AppFeature {
         var journalsEmpty = true
         var entriesCount = 0
         var syncPhase: SyncPhase = .idle
+        var errorMessage: String?
 
         init(isRunningTests: Bool, shouldStartSync: Bool, overridePhaseRaw: String?, bypassInitialOverlay: Bool) {
             self.isRunningTests = isRunningTests
@@ -43,6 +44,8 @@ struct AppFeature {
         case importTapped
         case setShowingImport(Bool)
         case createJournalTapped
+        case createJournalResponse(TaskResult<SQLiteJournal>)
+        case clearError
         case journalsChanged(isEmpty: Bool)
         case entriesCountChanged(Int)
         case syncPhaseChanged(SyncPhase)
@@ -87,7 +90,23 @@ struct AppFeature {
                 state.showingImport = isPresented
                 return .none
             case .createJournalTapped:
-                _ = databaseClient.createJournal()
+                return .run { [databaseClient] send in
+                    await send(
+                        .createJournalResponse(
+                            TaskResult {
+                                try databaseClient.createJournal()
+                            }
+                        )
+                    )
+                }
+            case .createJournalResponse(.success):
+                state.errorMessage = nil
+                return .none
+            case .createJournalResponse(.failure(let error)):
+                state.errorMessage = error.localizedDescription
+                return .none
+            case .clearError:
+                state.errorMessage = nil
                 return .none
             case .journalsChanged(let isEmpty):
                 state.journalsEmpty = isEmpty
