@@ -34,21 +34,29 @@ func appDatabase() throws -> any DatabaseWriter {
     // runs registered migrations in order and throws if a previously
     // applied migration is missing. Never remove or reorder existing
     // migrations; always append new ones.
-    var migrator = DatabaseMigrator()
+    var migrator = makeMigrator()
     #if DEBUG
     migrator.eraseDatabaseOnSchemaChange = true
     #endif
+    try migrator.migrate(database)
 
+    return database
+}
+
+private func makeMigrator(
+    eraseOnSchemaChange: Bool = false
+) -> DatabaseMigrator {
+    var migrator = DatabaseMigrator()
+    if eraseOnSchemaChange {
+        migrator.eraseDatabaseOnSchemaChange = true
+    }
     migrator.registerMigration("Create tables v2") { db in
         try createTablesV2(in: db)
     }
-
     migrator.registerMigration("Clean orphaned records v1") { db in
         try cleanOrphanedRecords(in: db)
     }
-
-    try migrator.migrate(database)
-    return database
+    return migrator
 }
 
 private func createTablesV2(in db: Database) throws {
