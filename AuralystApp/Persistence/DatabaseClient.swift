@@ -45,6 +45,26 @@ struct DatabaseClient: Sendable {
     var deleteMedicationIntake: @Sendable (
         _ intake: SQLiteMedicationIntake
     ) throws -> Void
+    var createAsNeededIntake: @Sendable (
+        _ intake: SQLiteMedicationIntake
+    ) throws -> Void
+    var loadMedicationForEditor: @Sendable (
+        _ medicationID: UUID
+    ) throws -> MedicationEditorFeature.LoadedMedication?
+    var saveMedicationFromEditor: @Sendable (
+        _ snapshot: MedicationEditorSnapshot
+    ) throws -> Void
+    var fetchQuickLogSnapshot: @Sendable (
+        _ journalID: UUID, _ date: Date
+    ) throws -> MedicationQuickLogSnapshot
+    var logScheduledDose: @Sendable (
+        _ params: ScheduledDoseLogParams
+    ) throws -> Void
+    var unlogScheduledDose: @Sendable (
+        _ params: ScheduledDoseUnlogParams
+    ) throws -> Void
+    var hasExistingJournal: @Sendable () throws -> Bool
+    var fetchJournalIsShared: @Sendable (_ journalID: UUID) throws -> Bool
 
     static let stub = DatabaseClient(
         createJournal: { SQLiteJournal() },
@@ -70,12 +90,44 @@ struct DatabaseClient: Sendable {
         },
         fetchMedicationIntake: { _ in nil },
         updateMedicationIntake: { _ in },
-        deleteMedicationIntake: { _ in }
+        deleteMedicationIntake: { _ in },
+        createAsNeededIntake: { _ in },
+        loadMedicationForEditor: { _ in nil },
+        saveMedicationFromEditor: { _ in },
+        fetchQuickLogSnapshot: { _, _ in .empty },
+        logScheduledDose: { _ in },
+        unlogScheduledDose: { _ in },
+        hasExistingJournal: { false },
+        fetchJournalIsShared: { _ in false }
     )
 
     private enum StubError: Error {
         case notImplemented
     }
+}
+
+struct ScheduledDoseLogParams: Sendable {
+    let schedule: SQLiteMedicationSchedule
+    let medication: SQLiteMedication
+    let date: Date
+}
+
+struct ScheduledDoseUnlogParams: Sendable {
+    let schedule: SQLiteMedicationSchedule
+    let date: Date
+    let snapshot: MedicationQuickLogSnapshot
+}
+
+struct MedicationEditorSnapshot: Sendable {
+    let journalID: UUID
+    let medicationID: UUID?
+    let name: String
+    let defaultAmount: String
+    let defaultUnit: String
+    let isAsNeeded: Bool
+    let useCase: String
+    let notes: String
+    var scheduleDrafts: [MedicationEditorFeature.ScheduleDraft]
 }
 
 private enum DatabaseClientKey: DependencyKey {
@@ -118,6 +170,9 @@ private func makeLiveClient() -> DatabaseClient {
         to: &client, database: database, logger: logger
     )
     assignIntakeMutateOps(
+        to: &client, database: database, logger: logger
+    )
+    assignQuickLogOps(
         to: &client, database: database, logger: logger
     )
     return client

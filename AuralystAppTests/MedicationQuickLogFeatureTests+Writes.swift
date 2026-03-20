@@ -24,6 +24,12 @@ struct MedicationQuickLogWriteTests {
         try await database.write { db in try insertSchedule(schedule, in: db) }
 
         let notificationCenter = NotificationCenter()
+        let posted = LockIsolated(false)
+        let token = notificationCenter.addObserver(
+            forName: .medicationIntakesDidChange, object: nil, queue: nil
+        ) { _ in posted.withValue { $0 = true } }
+        defer { notificationCenter.removeObserver(token) }
+
         let testStore = TestStore(
             initialState: MedicationQuickLogFeature.State(journalID: journal.id)
         ) {
@@ -48,6 +54,7 @@ struct MedicationQuickLogWriteTests {
             ) ?? 0
         }
         #expect(count == 1)
+        #expect(posted.value == true)
         await testStore.send(.cancelNotifications)
     }
 
@@ -78,6 +85,12 @@ struct MedicationQuickLogWriteTests {
         }
 
         let notificationCenter = NotificationCenter()
+        let posted = LockIsolated(false)
+        let token = notificationCenter.addObserver(
+            forName: .medicationIntakesDidChange, object: nil, queue: nil
+        ) { _ in posted.withValue { $0 = true } }
+        defer { notificationCenter.removeObserver(token) }
+
         let testStore = TestStore(
             initialState: MedicationQuickLogFeature.State(journalID: journal.id)
         ) {
@@ -99,6 +112,7 @@ struct MedicationQuickLogWriteTests {
             ) ?? 0
         }
         #expect(remaining == 0)
+        #expect(posted.value == true)
         await testStore.send(.cancelNotifications)
     }
 

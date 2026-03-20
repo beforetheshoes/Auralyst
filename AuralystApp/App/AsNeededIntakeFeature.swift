@@ -27,8 +27,9 @@ struct AsNeededIntakeFeature {
         case clearDidSave
     }
 
-    @Dependency(\.defaultDatabase) private var database
+    @Dependency(\.databaseClient) private var databaseClient
     @Dependency(\.date) private var date
+    @Dependency(\.notificationCenter) private var notificationCenter
 
     var body: some Reducer<State, Action> {
         BindingReducer()
@@ -58,7 +59,7 @@ struct AsNeededIntakeFeature {
                 let unit = state.unit
                 let notes = state.notes
                 let timestamp = state.timestamp
-                return .run { send in
+                return .run { [databaseClient, notificationCenter] send in
                     await send(
                         .saveResponse(
                             TaskResult {
@@ -74,10 +75,8 @@ struct AsNeededIntakeFeature {
                                     origin: "asNeeded",
                                     notes: noteValue
                                 )
-                                try database.write { db in
-                                    try SQLiteMedicationIntake.insert { intake }.execute(db)
-                                }
-                                NotificationCenter.default.post(name: .medicationIntakesDidChange, object: nil)
+                                try databaseClient.createAsNeededIntake(intake)
+                                notificationCenter.post(name: .medicationIntakesDidChange, object: nil)
                             }
                         )
                     )

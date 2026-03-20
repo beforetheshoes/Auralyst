@@ -44,6 +44,25 @@ func assignJournalOps(
             return nil
         }
     }
+
+    client.hasExistingJournal = {
+        try database.read { db in
+            (try Int.fetchOne(
+                db, sql: "SELECT COUNT(*) FROM sqLiteJournal"
+            ) ?? 0) > 0
+        }
+    }
+
+    client.fetchJournalIsShared = { journalID in
+        try database.read { db in
+            guard let journal = try SQLiteJournal.find(journalID).fetchOne(db)
+            else { return false }
+            return try SyncMetadata
+                .find(journal.syncMetadataID)
+                .select(\.isShared)
+                .fetchOne(db) ?? false
+        }
+    }
 }
 
 private func createJournalImpl(

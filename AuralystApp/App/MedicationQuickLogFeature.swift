@@ -7,7 +7,7 @@ import GRDB
 @Reducer
 struct MedicationQuickLogFeature {
     @Dependency(\.continuousClock) var clock
-    @Dependency(\.defaultDatabase) var database
+    @Dependency(\.databaseClient) var databaseClient
     @Dependency(\.notificationCenter) var notificationCenter
 
     @ObservableState
@@ -50,12 +50,11 @@ struct MedicationQuickLogFeature {
                 state.errorMessage = nil
                 let journalID = state.journalID
                 let date = state.selectedDate
-                let loadEffect: Effect<Action> = .run { send in
+                let loadEffect: Effect<Action> = .run { [databaseClient] send in
                     await send(
                         .loadResponse(
                             TaskResult {
-                                let loader = MedicationQuickLogLoader()
-                                return try loader.load(journalID: journalID, on: date)
+                                try databaseClient.fetchQuickLogSnapshot(journalID, date)
                             }
                         )
                     )
@@ -105,29 +104,18 @@ struct MedicationQuickLogFeature {
                 )
 
             case .logScheduledDose(let schedule, let medication, let date):
-                return .run { [database] send in
+                return .run { [databaseClient, notificationCenter] send in
                     await send(
                         .logResponse(
                             TaskResult {
-                                let times = Self.scheduledDateTime(for: schedule, on: date)
-                                let amountValue = schedule.amount ?? medication.defaultAmount
-                                let unitValue = schedule.unit ?? medication.defaultUnit
-                                try database.write { db in
-                                    let persistedScheduleID = try scheduleIDToPersist(
-                                        scheduleID: schedule.id, db: db
+                                try databaseClient.logScheduledDose(
+                                    ScheduledDoseLogParams(
+                                        schedule: schedule,
+                                        medication: medication,
+                                        date: date
                                     )
-                                    try insertMedicationIntake(
-                                        in: db,
-                                        medicationID: schedule.medicationID,
-                                        scheduleID: persistedScheduleID,
-                                        amount: amountValue,
-                                        unit: unitValue,
-                                        timestamp: times.timestamp,
-                                        scheduledDate: times.scheduledDate,
-                                        origin: "scheduled"
-                                    )
-                                }
-                                NotificationCenter.default.post(
+                                )
+                                notificationCenter.post(
                                     name: .medicationIntakesDidChange, object: nil
                                 )
                             }
@@ -145,39 +133,18 @@ struct MedicationQuickLogFeature {
 
             case .unlogScheduledDose(let schedule, let date):
                 let snapshot = state.snapshot
-                return .run { [database] send in
+                return .run { [databaseClient, notificationCenter] send in
                     await send(
                         .unlogResponse(
                             TaskResult {
-                                if let intake = snapshot.takenByScheduleID[schedule.id] {
-                                    try database.write { db in
-                                        try db.execute(
-                                            sql: """
-                                                DELETE FROM "sqLiteMedicationIntake"
-                                                WHERE lower("id") = lower(?)
-                                                """,
-                                            arguments: [intake.id.uuidString]
-                                        )
-                                    }
-                                } else if schedule.id == schedule.medicationID {
-                                    let bounds = Self.dayBounds(for: date)
-                                    try database.write { db in
-                                        try db.execute(
-                                            sql: """
-                                                DELETE FROM "sqLiteMedicationIntake"
-                                                WHERE lower("medicationID") = lower(?)
-                                                AND "timestamp" >= ? AND "timestamp" < ?
-                                                AND "scheduleID" IS NULL
-                                                """,
-                                            arguments: [
-                                                schedule.medicationID.uuidString,
-                                                bounds.start,
-                                                bounds.end
-                                            ]
-                                        )
-                                    }
-                                }
-                                NotificationCenter.default.post(
+                                try databaseClient.unlogScheduledDose(
+                                    ScheduledDoseUnlogParams(
+                                        schedule: schedule,
+                                        date: date,
+                                        snapshot: snapshot
+                                    )
+                                )
+                                notificationCenter.post(
                                     name: .medicationIntakesDidChange, object: nil
                                 )
                             }

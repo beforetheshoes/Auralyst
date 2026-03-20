@@ -153,6 +153,80 @@ struct SymptomEntryEditorFeatureTests {
     }
 
     @MainActor
+    @Test("saveTapped posts symptomEntriesDidChange to injected center")
+    func saveTappedPostsNotification() async throws {
+        try prepareTestDependencies()
+
+        let store = DataStore()
+        let journal = try store.createJournal()
+        let entry = try store.createSymptomEntry(
+            for: journal, severity: 5, note: "Original",
+            isMenstruating: false
+        )
+
+        let notificationCenter = NotificationCenter()
+        let posted = LockIsolated(false)
+        let token = notificationCenter.addObserver(
+            forName: .symptomEntriesDidChange, object: nil, queue: nil
+        ) { _ in posted.withValue { $0 = true } }
+        defer { notificationCenter.removeObserver(token) }
+
+        let testStore = TestStore(
+            initialState: SymptomEntryEditorFeature.State(entryID: entry.id)
+        ) {
+            SymptomEntryEditorFeature()
+        }
+        testStore.exhaustivity = .off
+        testStore.dependencies.notificationCenter = notificationCenter
+
+        await testStore.send(.task)
+        await testStore.receive(\.loadResponse)
+
+        await testStore.send(\.binding.severity, 9)
+        await testStore.send(.saveTapped)
+        await testStore.receive(\.saveResponse.success)
+
+        #expect(posted.value == true)
+    }
+
+    @MainActor
+    @Test("deleteConfirmed posts symptomEntriesDidChange to injected center")
+    func deleteConfirmedPostsNotification() async throws {
+        try prepareTestDependencies()
+
+        let store = DataStore()
+        let journal = try store.createJournal()
+        let entry = try store.createSymptomEntry(
+            for: journal, severity: 3, note: nil,
+            isMenstruating: false
+        )
+
+        let notificationCenter = NotificationCenter()
+        let posted = LockIsolated(false)
+        let token = notificationCenter.addObserver(
+            forName: .symptomEntriesDidChange, object: nil, queue: nil
+        ) { _ in posted.withValue { $0 = true } }
+        defer { notificationCenter.removeObserver(token) }
+
+        let testStore = TestStore(
+            initialState: SymptomEntryEditorFeature.State(entryID: entry.id)
+        ) {
+            SymptomEntryEditorFeature()
+        }
+        testStore.exhaustivity = .off
+        testStore.dependencies.notificationCenter = notificationCenter
+
+        await testStore.send(.task)
+        await testStore.receive(\.loadResponse)
+
+        await testStore.send(.deleteTapped)
+        await testStore.send(.deleteConfirmed)
+        await testStore.receive(\.deleteResponse.success)
+
+        #expect(posted.value == true)
+    }
+
+    @MainActor
     @Test("saveResponse failure sets errorMessage")
     func saveFailureSetsError() async throws {
         try prepareTestDependencies()

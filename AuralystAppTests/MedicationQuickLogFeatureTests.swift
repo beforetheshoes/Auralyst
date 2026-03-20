@@ -54,7 +54,7 @@ struct MedicationQuickLogFeatureTests {
             $0.errorMessage = nil
         }
 
-        let loader = MedicationQuickLogLoader()
+        let loader = MedicationQuickLogLoader(database: database)
         let expectedSnapshot = try loader.load(journalID: journal.id, on: testStore.state.selectedDate)
 
         await testStore.receive(\.loadResponse) {
@@ -76,6 +76,7 @@ struct MedicationQuickLogFeatureTests {
         try prepareTestDependencies()
         let notificationCenter = NotificationCenter()
 
+        @Dependency(\.defaultDatabase) var database
         let store = DataStore()
         let journal = try store.createJournal()
         _ = store.createMedication(
@@ -101,7 +102,7 @@ struct MedicationQuickLogFeatureTests {
             $0.errorMessage = nil
         }
 
-        let loader = MedicationQuickLogLoader()
+        let loader = MedicationQuickLogLoader(database: database)
         let expectedSnapshot = try loader.load(journalID: journal.id, on: testStore.state.selectedDate)
 
         await testStore.receive(\.loadResponse) {
@@ -119,6 +120,7 @@ struct MedicationQuickLogFeatureTests {
 
         let notificationCenter = NotificationCenter()
 
+        @Dependency(\.defaultDatabase) var database
         let store = DataStore()
         let journal = try store.createJournal()
         _ = store.createMedication(
@@ -140,7 +142,7 @@ struct MedicationQuickLogFeatureTests {
             $0.errorMessage = nil
         }
 
-        let loader = MedicationQuickLogLoader()
+        let loader = MedicationQuickLogLoader(database: database)
         let expectedSnapshot = try loader.load(journalID: journal.id, on: testStore.state.selectedDate)
 
         await testStore.receive(\.loadResponse) {

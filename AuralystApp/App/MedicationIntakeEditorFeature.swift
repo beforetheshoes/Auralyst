@@ -32,6 +32,7 @@ struct MedicationIntakeEditorFeature {
     }
 
     @Dependency(\.databaseClient) private var databaseClient
+    @Dependency(\.notificationCenter) private var notificationCenter
 
     var body: some Reducer<State, Action> {
         BindingReducer()
@@ -67,7 +68,7 @@ struct MedicationIntakeEditorFeature {
                 let unit = state.unit
                 let notes = state.notes
                 let timestamp = state.timestamp
-                return .run { send in
+                return .run { [databaseClient, notificationCenter] send in
                     await send(
                         .saveResponse(
                             TaskResult {
@@ -78,7 +79,7 @@ struct MedicationIntakeEditorFeature {
                                     notes: notes.isEmpty ? nil : notes
                                 )
                                 try databaseClient.updateMedicationIntake(updatedIntake)
-                                NotificationCenter.default.post(name: .medicationIntakesDidChange, object: nil)
+                                notificationCenter.post(name: .medicationIntakesDidChange, object: nil)
                                 return updatedIntake
                             }
                         )
@@ -100,12 +101,12 @@ struct MedicationIntakeEditorFeature {
 
             case .deleteConfirmed:
                 guard let intake = state.intake else { return .none }
-                return .run { send in
+                return .run { [databaseClient, notificationCenter] send in
                     await send(
                         .deleteResponse(
                             TaskResult {
                                 try databaseClient.deleteMedicationIntake(intake)
-                                NotificationCenter.default.post(name: .medicationIntakesDidChange, object: nil)
+                                notificationCenter.post(name: .medicationIntakesDidChange, object: nil)
                             }
                         )
                     )

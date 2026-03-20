@@ -54,31 +54,34 @@ func assignMedOps(
     }
 
     client.createMedication = { journal, name, defaultAmount, defaultUnit in
-        ensureJournalCloudMetadata(
-            journalID: journal.id,
+        createMedicationImpl(
+            journal: journal, name: name,
+            defaultAmount: defaultAmount, defaultUnit: defaultUnit,
             database: database, logger: logger
         )
-        let medication = SQLiteMedication(
-            journalID: journal.id,
-            name: name,
-            defaultAmount: defaultAmount,
-            defaultUnit: defaultUnit
-        )
+    }
+
+    client.loadMedicationForEditor = { medicationID in
         do {
-            try database.write { db in
-                try SQLiteMedication
-                    .insert { medication }.execute(db)
+            let result = try database.read { db in
+                try loadMedication(medicationID, from: db)
             }
             logger.info(
-                "Created medication: \(name)"
+                "Loaded medication for editor: \(medicationID)"
             )
-            return medication
+            return result
         } catch {
             logger.error(
-                "Error creating medication: \(error.localizedDescription)"
+                "Error loading medication for editor \(medicationID): \(error.localizedDescription)"
             )
-            return medication
+            throw error
         }
+    }
+
+    client.saveMedicationFromEditor = { snapshot in
+        try saveMedicationFromEditorImpl(
+            snapshot: snapshot, database: database, logger: logger
+        )
     }
 
     client.fetchMedications = { journal in
@@ -97,6 +100,83 @@ func assignMedOps(
             )
             return []
         }
+    }
+}
+
+// swiftlint:disable:next function_parameter_count
+private func createMedicationImpl(
+    journal: SQLiteJournal,
+    name: String,
+    defaultAmount: Double?,
+    defaultUnit: String?,
+    database: any DatabaseWriter,
+    logger: Logger
+) -> SQLiteMedication {
+    ensureJournalCloudMetadata(
+        journalID: journal.id,
+        database: database, logger: logger
+    )
+    let medication = SQLiteMedication(
+        journalID: journal.id,
+        name: name,
+        defaultAmount: defaultAmount,
+        defaultUnit: defaultUnit
+    )
+    do {
+        try database.write { db in
+            try SQLiteMedication
+                .insert { medication }.execute(db)
+        }
+        logger.info("Created medication: \(name)")
+        return medication
+    } catch {
+        logger.error(
+            "Error creating medication: \(error.localizedDescription)"
+        )
+        return medication
+    }
+}
+
+private func saveMedicationFromEditorImpl(
+    snapshot: MedicationEditorSnapshot,
+    database: any DatabaseWriter,
+    logger: Logger
+) throws {
+    do {
+        try database.write { db in
+            let amountValue = Double(snapshot.defaultAmount)
+            let unitValue = snapshot.defaultUnit.isEmpty ? nil : snapshot.defaultUnit
+            let notesValue = snapshot.notes.isEmpty ? nil : snapshot.notes
+            let useCaseValue = snapshot.useCase.isEmpty ? nil : snapshot.useCase
+            let now = Date()
+
+            let medicationID = try upsertMedication(
+                in: db,
+                params: MedicationUpsertParams(
+                    journalID: snapshot.journalID,
+                    medicationID: snapshot.medicationID,
+                    name: snapshot.name,
+                    amount: amountValue,
+                    unit: unitValue,
+                    isAsNeeded: snapshot.isAsNeeded,
+                    useCase: useCaseValue,
+                    notes: notesValue,
+                    timestamp: now
+                )
+            )
+
+            var drafts = snapshot.scheduleDrafts
+            try syncSchedules(
+                in: db, medicationID: medicationID,
+                drafts: &drafts
+            )
+        }
+        logger.info("Saved medication from editor")
+    } catch {
+        logger.error(
+            "Error saving medication from editor: \(error.localizedDescription)"
+        )
+        throw error
     }
 }
 
@@ -164,6 +244,12 @@ func assignIntakeCreateOps(
         }
     }
 
+    client.createAsNeededIntake = { intake in
+        try createAsNeededIntakeImpl(
+            intake, database: database, logger: logger
+        )
+    }
+
     client.fetchMedicationIntake = { id in
         do {
             let intake = try database.read { db in
@@ -178,6 +264,27 @@ func assignIntakeCreateOps(
             )
             return nil
         }
+    }
+}
+
+private func createAsNeededIntakeImpl(
+    _ intake: SQLiteMedicationIntake,
+    database: any DatabaseWriter,
+    logger: Logger
+) throws {
+    do {
+        try database.write { db in
+            try SQLiteMedicationIntake
+                .insert { intake }.execute(db)
+        }
+        logger.info(
+            "Created as-needed intake for: \(intake.medicationID)"
+        )
+    } catch {
+        logger.error(
+            "Error creating as-needed intake: \(error.localizedDescription)"
+        )
+        throw error
     }
 }
 
