@@ -199,6 +199,9 @@ private func deleteSymptomEntryImpl(
     database: any DatabaseWriter,
     logger: Logger
 ) throws {
+    // Belt-and-suspenders: ON DELETE SET NULL handles this at
+    // the schema level; manual cleanup retained for defense
+    // in depth.
     do {
         try database.write { db in
             try db.execute(

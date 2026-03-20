@@ -15,51 +15,11 @@ func ensureJournalCloudMetadata(
     logger: Logger
 ) {
     do {
-        let metadataTableExists = try database.read { db in
-            try String.fetchOne(
-                db,
-                sql: """
-                    SELECT name FROM sqlite_master
-                    WHERE type = 'table'
-                    AND name = 'sqlitedata_icloud_metadata'
-                """
-            ) != nil
-        }
-        guard metadataTableExists else { return }
-
-        let metadataRow = try database.read { db in
-            try Row.fetchOne(
-                db,
-                sql: """
-                SELECT hasLastKnownServerRecord,
-                       lastKnownServerRecord, _isDeleted
-                FROM sqlitedata_icloud_metadata
-                WHERE recordPrimaryKey = ? AND recordType = ?
-                LIMIT 1
-                """,
-                arguments: [
-                    journalID.uuidString,
-                    SQLiteJournal.tableName
-                ]
+        try database.write { db in
+            try ensureMetadataInTransaction(
+                journalID: journalID, db: db, logger: logger
             )
         }
-
-        let action = evaluateMetadataRow(
-            metadataRow, journalID: journalID
-        )
-        guard action != .skip else { return }
-
-        if action == .reset {
-            try resetCloudMetadata(
-                journalID: journalID,
-                database: database,
-                logger: logger
-            )
-        }
-
-        try touchJournalRecord(
-            journalID: journalID, database: database
-        )
         logger.info(
             "Ensured CloudKit metadata for journal: \(journalID)"
         )
@@ -70,44 +30,72 @@ func ensureJournalCloudMetadata(
     }
 }
 
-private func resetCloudMetadata(
+private func ensureMetadataInTransaction(
     journalID: UUID,
-    database: any DatabaseWriter,
+    db: Database,
     logger: Logger
 ) throws {
-    try database.write { db in
+    guard try iCloudMetadataTableExists(in: db) else { return }
+
+    let metadataRow = try Row.fetchOne(
+        db,
+        sql: """
+            SELECT hasLastKnownServerRecord,
+                   lastKnownServerRecord, _isDeleted
+            FROM sqlitedata_icloud_metadata
+            WHERE recordPrimaryKey = ?
+            AND recordType = ?
+            LIMIT 1
+            """,
+        arguments: [journalID.uuidString, SQLiteJournal.tableName]
+    )
+
+    let action = evaluateMetadataRow(
+        metadataRow, journalID: journalID, logger: logger
+    )
+    guard action != .skip else { return }
+
+    if action == .reset {
         try db.execute(
             sql: """
-            DELETE FROM sqlitedata_icloud_metadata
-            WHERE recordPrimaryKey = ? AND recordType = ?
-            """,
+                DELETE FROM sqlitedata_icloud_metadata
+                WHERE recordPrimaryKey = ?
+                AND recordType = ?
+                """,
             arguments: [
                 journalID.uuidString,
                 SQLiteJournal.tableName
             ]
         )
-    }
-    logger.info("Reset CloudKit metadata for journal: \(journalID)")
-}
-
-private func touchJournalRecord(
-    journalID: UUID,
-    database: any DatabaseWriter
-) throws {
-    try database.write { db in
-        try db.execute(
-            sql: """
-                UPDATE sqLiteJournal
-                SET createdAt = createdAt WHERE id = ?
-            """,
-            arguments: [journalID.uuidString]
+        logger.info(
+            "Reset CloudKit metadata for journal: \(journalID)"
         )
     }
+
+    try db.execute(
+        sql: """
+            UPDATE sqLiteJournal
+            SET createdAt = createdAt WHERE id = ?
+            """,
+        arguments: [journalID.uuidString]
+    )
+}
+
+private func iCloudMetadataTableExists(in db: Database) throws -> Bool {
+    try String.fetchOne(
+        db,
+        sql: """
+            SELECT name FROM sqlite_master
+            WHERE type = 'table'
+            AND name = 'sqlitedata_icloud_metadata'
+        """
+    ) != nil
 }
 
 private func evaluateMetadataRow(
     _ metadataRow: Row?,
-    journalID: UUID
+    journalID: UUID,
+    logger: Logger
 ) -> MetadataAction {
     guard let metadataRow else { return .touchOnly }
 
@@ -121,11 +109,13 @@ private func evaluateMetadataRow(
     let recordSize = lastKnown?.count ?? 0
     let shareSize = share?.count ?? 0
 
-    print(
-        "Journal metadata status id=\(journalID)"
-        + " hasLastKnownServerRecord=\(hasLastKnown)"
-        + " recordSize=\(recordSize) isDeleted=\(isDeleted)"
-        + " isShared=\(isShared) shareSize=\(shareSize)"
+    logger.debug(
+        """
+        Journal metadata status id=\(journalID) \
+        hasLastKnownServerRecord=\(hasLastKnown) \
+        recordSize=\(recordSize) isDeleted=\(isDeleted) \
+        isShared=\(isShared) shareSize=\(shareSize)
+        """
     )
 
     if isDeleted == 1

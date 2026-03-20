@@ -5,6 +5,7 @@ readonly PREFERRED_SIMULATOR_ID="${AURALYST_SIMULATOR_ID:-86A1B10E-ED24-44E3-ABA
 readonly DERIVED_DATA_PATH="${AURALYST_DERIVED_DATA_PATH:-/tmp/AuralystAppUITestsDerivedData}"
 readonly RESULT_BUNDLE_PATH="${AURALYST_UI_TEST_RESULT_BUNDLE:-/tmp/AuralystAppUITests.xcresult}"
 readonly XCODEBUILD_QUIET="${AURALYST_XCODEBUILD_QUIET:-0}"
+readonly APP_BUNDLE_ID="com.ryanleewilliams.AuralystApp"
 
 resolve_destination() {
   local detected_destination
@@ -102,6 +103,11 @@ main() {
 
   echo "Booting simulator: ${simulator_udid}"
   boot_simulator "${simulator_udid}"
+
+  # Remove stale app data so eraseDatabaseOnSchemaChange can VACUUM
+  # without interference from the ATTACHed metadata database.
+  echo "Uninstalling previous app data…"
+  xcrun simctl uninstall "${simulator_udid}" "${APP_BUNDLE_ID}" 2>/dev/null || true
 
   echo "Running UI tests with destination: ${destination}"
   echo "DerivedData: ${DERIVED_DATA_PATH}"
