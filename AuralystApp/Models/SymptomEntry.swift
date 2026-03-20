@@ -2,7 +2,7 @@ import Foundation
 @preconcurrency import SQLiteData
 
 @Table("sqLiteSymptomEntry")
-struct SQLiteSymptomEntry: Identifiable {
+struct SQLiteSymptomEntry: Identifiable, Equatable {
     let id: UUID
     let timestamp: Date
     let journalID: UUID

@@ -1,9 +1,8 @@
+import ComposableArchitecture
 import Foundation
+import GRDB
 @preconcurrency import SQLiteData
 import SwiftUI
-import Dependencies
-import ComposableArchitecture
-import GRDB
 
 struct MedicationQuickLogSection: View {
     let store: StoreOf<MedicationQuickLogFeature>
@@ -43,19 +42,9 @@ struct MedicationQuickLogSection: View {
                                     isTaken: store.snapshot.takenByScheduleID[sched.id] != nil,
                                     toggle: { isOn in
                                         if isOn {
-                                            logScheduledDose(
-                                                schedule: sched,
-                                                medication: med,
-                                                selectedDate: store.selectedDate,
-                                                onRefresh: { store.send(.refreshRequested) }
-                                            )
+                                            store.send(.logScheduledDose(sched, med, store.selectedDate))
                                         } else {
-                                            unlogScheduledDose(
-                                                schedule: sched,
-                                                selectedDate: store.selectedDate,
-                                                snapshot: store.snapshot,
-                                                onRefresh: { store.send(.refreshRequested) }
-                                            )
+                                            store.send(.unlogScheduledDose(sched, store.selectedDate))
                                         }
                                     }
                                 )
@@ -163,38 +152,6 @@ struct MedicationQuickLogSection: View {
         return "quicklog-\(context)-\(sanitized)"
     }
 
-    private func logScheduledDose(
-        schedule: SQLiteMedicationSchedule,
-        medication: SQLiteMedication,
-        selectedDate: Date,
-        onRefresh: @escaping () -> Void
-    ) {
-        @Dependency(\.defaultDatabase) var database
-        let times = scheduledDateTime(for: schedule, on: selectedDate)
-        let amountValue = schedule.amount ?? medication.defaultAmount
-        let unitValue = schedule.unit ?? medication.defaultUnit
-        do {
-            try database.write { db in
-                let persistedScheduleID = try Self.scheduleIDToPersist(scheduleID: schedule.id, db: db)
-                let newIntake = SQLiteMedicationIntake(
-                    id: UUID(),
-                    medicationID: schedule.medicationID,
-                    scheduleID: persistedScheduleID,
-                    amount: amountValue,
-                    unit: unitValue,
-                    timestamp: times.timestamp,
-                    scheduledDate: times.scheduledDate,
-                    origin: "scheduled"
-                )
-                try SQLiteMedicationIntake.insert { newIntake }.execute(db)
-            }
-            NotificationCenter.default.post(name: .medicationIntakesDidChange, object: nil)
-            onRefresh()
-        } catch {
-            // ignore for now
-        }
-    }
-
     static func scheduleIDToPersist(scheduleID: UUID, db: Database) throws -> UUID? {
         // Only persist a scheduleID that actually exists in the schedules table.
         let count = try Int.fetchOne(
@@ -203,70 +160,6 @@ struct MedicationQuickLogSection: View {
             arguments: [scheduleID.uuidString, scheduleID]
         ) ?? 0
         return count > 0 ? scheduleID : nil
-    }
-
-    private func unlogScheduledDose(
-        schedule: SQLiteMedicationSchedule,
-        selectedDate: Date,
-        snapshot: MedicationQuickLogSnapshot,
-        onRefresh: @escaping () -> Void
-    ) {
-        @Dependency(\.defaultDatabase) var database
-        if let intake = snapshot.takenByScheduleID[schedule.id] {
-            do {
-                try database.write { db in
-                    try SQLiteMedicationIntake.find(intake.id).delete().execute(db)
-                }
-                NotificationCenter.default.post(name: .medicationIntakesDidChange, object: nil)
-                onRefresh()
-            } catch {
-                // ignore for now
-            }
-            return
-        }
-        if schedule.id == schedule.medicationID {
-            let bounds = dayBounds(for: selectedDate)
-            do {
-                try database.write { db in
-                    let medicationID = schedule.medicationID
-                    let start = bounds.start
-                    let end = bounds.end
-                    try SQLiteMedicationIntake
-                        .where { intake in
-                            intake.medicationID.eq(medicationID) &&
-                            intake.timestamp >= start &&
-                            intake.timestamp < end &&
-                            intake.scheduleID.is(nil)
-                        }
-                        .delete()
-                        .execute(db)
-                }
-                NotificationCenter.default.post(name: .medicationIntakesDidChange, object: nil)
-                onRefresh()
-            } catch {
-                // ignore
-            }
-        }
-    }
-
-    private func scheduledDateTime(
-        for schedule: SQLiteMedicationSchedule,
-        on date: Date
-    ) -> (timestamp: Date, scheduledDate: Date) {
-        let cal = Calendar.current
-        let start = cal.startOfDay(for: date)
-        var comps = cal.dateComponents([.year, .month, .day], from: start)
-        comps.hour = Int(schedule.hour ?? 8)
-        comps.minute = Int(schedule.minute ?? 0)
-        let scheduled = cal.date(from: comps) ?? start
-        return (scheduled, start)
-    }
-
-    private func dayBounds(for date: Date) -> (start: Date, end: Date) {
-        let cal = Calendar.current
-        let start = cal.startOfDay(for: date)
-        let end = cal.date(byAdding: .day, value: 1, to: start) ?? start
-        return (start, end)
     }
 }
 
