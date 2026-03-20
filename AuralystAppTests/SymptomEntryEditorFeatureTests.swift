@@ -227,6 +227,42 @@ struct SymptomEntryEditorFeatureTests {
     }
 
     @MainActor
+    @Test("deleteResponse failure sets errorMessage")
+    func deleteFailureSetsError() async throws {
+        try prepareTestDependencies()
+
+        let store = DataStore()
+        let journal = try store.createJournal()
+        let entry = try store.createSymptomEntry(
+            for: journal, severity: 3, note: nil,
+            isMenstruating: false
+        )
+
+        let testStore = TestStore(
+            initialState: SymptomEntryEditorFeature.State(entryID: entry.id)
+        ) {
+            SymptomEntryEditorFeature()
+        } withDependencies: {
+            $0.databaseClient.deleteSymptomEntry = { _ in
+                throw NSError(domain: "test", code: 1, userInfo: [
+                    NSLocalizedDescriptionKey: "Delete failed"
+                ])
+            }
+        }
+        testStore.exhaustivity = .off
+
+        await testStore.send(.task)
+        await testStore.receive(\.loadResponse)
+
+        await testStore.send(.deleteTapped)
+        await testStore.send(.deleteConfirmed)
+
+        await testStore.receive(\.deleteResponse.failure) {
+            #expect($0.errorMessage != nil)
+        }
+    }
+
+    @MainActor
     @Test("saveResponse failure sets errorMessage")
     func saveFailureSetsError() async throws {
         try prepareTestDependencies()
