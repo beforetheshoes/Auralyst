@@ -1,10 +1,13 @@
 import ComposableArchitecture
 import Dependencies
 import Foundation
+import GRDB
+@preconcurrency import SQLiteData
 
 @Reducer
 struct MedicationQuickLogFeature {
     @Dependency(\.continuousClock) var clock
+    @Dependency(\.defaultDatabase) var database
     @Dependency(\.notificationCenter) var notificationCenter
 
     @ObservableState
@@ -28,6 +31,10 @@ struct MedicationQuickLogFeature {
         case selectedDateChanged(Date)
         case loadResponse(TaskResult<MedicationQuickLogSnapshot>)
         case cancelNotifications
+        case logScheduledDose(SQLiteMedicationSchedule, SQLiteMedication, Date)
+        case logResponse(TaskResult<Void>)
+        case unlogScheduledDose(SQLiteMedicationSchedule, Date)
+        case unlogResponse(TaskResult<Void>)
     }
 
     private enum CancelID {
@@ -96,11 +103,161 @@ struct MedicationQuickLogFeature {
                     .cancel(id: CancelID.medicationChanges),
                     .cancel(id: CancelID.intakeChanges)
                 )
+
+            case .logScheduledDose(let schedule, let medication, let date):
+                return .run { [database] send in
+                    await send(
+                        .logResponse(
+                            TaskResult {
+                                let times = Self.scheduledDateTime(for: schedule, on: date)
+                                let amountValue = schedule.amount ?? medication.defaultAmount
+                                let unitValue = schedule.unit ?? medication.defaultUnit
+                                try database.write { db in
+                                    let persistedScheduleID = try scheduleIDToPersist(
+                                        scheduleID: schedule.id, db: db
+                                    )
+                                    try insertMedicationIntake(
+                                        in: db,
+                                        medicationID: schedule.medicationID,
+                                        scheduleID: persistedScheduleID,
+                                        amount: amountValue,
+                                        unit: unitValue,
+                                        timestamp: times.timestamp,
+                                        scheduledDate: times.scheduledDate,
+                                        origin: "scheduled"
+                                    )
+                                }
+                                NotificationCenter.default.post(
+                                    name: .medicationIntakesDidChange, object: nil
+                                )
+                            }
+                        )
+                    )
+                }
+
+            case .logResponse(.success):
+                state.errorMessage = nil
+                return .send(.refreshRequested)
+
+            case .logResponse(.failure(let error)):
+                state.errorMessage = error.localizedDescription
+                return .none
+
+            case .unlogScheduledDose(let schedule, let date):
+                let snapshot = state.snapshot
+                return .run { [database] send in
+                    await send(
+                        .unlogResponse(
+                            TaskResult {
+                                if let intake = snapshot.takenByScheduleID[schedule.id] {
+                                    try database.write { db in
+                                        try db.execute(
+                                            sql: """
+                                                DELETE FROM "sqLiteMedicationIntake"
+                                                WHERE lower("id") = lower(?)
+                                                """,
+                                            arguments: [intake.id.uuidString]
+                                        )
+                                    }
+                                } else if schedule.id == schedule.medicationID {
+                                    let bounds = Self.dayBounds(for: date)
+                                    try database.write { db in
+                                        try db.execute(
+                                            sql: """
+                                                DELETE FROM "sqLiteMedicationIntake"
+                                                WHERE lower("medicationID") = lower(?)
+                                                AND "timestamp" >= ? AND "timestamp" < ?
+                                                AND "scheduleID" IS NULL
+                                                """,
+                                            arguments: [
+                                                schedule.medicationID.uuidString,
+                                                bounds.start,
+                                                bounds.end
+                                            ]
+                                        )
+                                    }
+                                }
+                                NotificationCenter.default.post(
+                                    name: .medicationIntakesDidChange, object: nil
+                                )
+                            }
+                        )
+                    )
+                }
+
+            case .unlogResponse(.success):
+                state.errorMessage = nil
+                return .send(.refreshRequested)
+
+            case .unlogResponse(.failure(let error)):
+                state.errorMessage = error.localizedDescription
+                return .none
             }
         }
+    }
+
+    static func scheduledDateTime(
+        for schedule: SQLiteMedicationSchedule,
+        on date: Date
+    ) -> (timestamp: Date, scheduledDate: Date) {
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: date)
+        var comps = cal.dateComponents([.year, .month, .day], from: start)
+        comps.hour = Int(schedule.hour ?? 8)
+        comps.minute = Int(schedule.minute ?? 0)
+        let scheduled = cal.date(from: comps) ?? start
+        return (scheduled, start)
+    }
+
+    static func dayBounds(for date: Date) -> (start: Date, end: Date) {
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: date)
+        let end = cal.date(byAdding: .day, value: 1, to: start) ?? start
+        return (start, end)
     }
 }
 
 private enum RefreshDebounceID: Hashable {
     case refresh
+}
+
+// swiftlint:disable:next function_parameter_count
+func insertMedicationIntake(
+    in db: Database,
+    id: UUID = UUID(),
+    medicationID: UUID,
+    scheduleID: UUID? = nil,
+    amount: Double?,
+    unit: String?,
+    timestamp: Date,
+    scheduledDate: Date? = nil,
+    origin: String?
+) throws {
+    try db.execute(
+        sql: """
+            INSERT INTO "sqLiteMedicationIntake"
+            ("id","medicationID","scheduleID","amount","unit",
+             "timestamp","scheduledDate","origin")
+            VALUES (?,?,?,?,?,?,?,?)
+            """,
+        arguments: [
+            id.uuidString.lowercased(),
+            medicationID.uuidString.lowercased(),
+            scheduleID?.uuidString.lowercased(),
+            amount,
+            unit,
+            timestamp,
+            scheduledDate,
+            origin
+        ]
+    )
+}
+
+func scheduleIDToPersist(scheduleID: UUID, db: Database) throws -> UUID? {
+    let count = try Int.fetchOne(
+        db,
+        sql: "SELECT COUNT(*) FROM sqLiteMedicationSchedule WHERE lower(id) = lower(?) OR id = ?",
+        arguments: [scheduleID.uuidString, scheduleID]
+    ) ?? 0
+    return count > 0 ? scheduleID : nil
 }

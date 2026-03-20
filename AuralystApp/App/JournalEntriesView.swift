@@ -265,7 +265,13 @@ private struct DayDetailView: View {
                 } else {
                     ForEach(entries) { entry in
                         NavigationLink {
-                            SymptomEntryEditorView(entryID: entry.id)
+                            SymptomEntryEditorView(
+                                store: Store(
+                                    initialState: SymptomEntryEditorFeature.State(entryID: entry.id)
+                                ) {
+                                    SymptomEntryEditorFeature()
+                                }
+                            )
                         } label: {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack {

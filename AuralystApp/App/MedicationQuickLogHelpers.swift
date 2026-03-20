@@ -10,6 +10,9 @@ extension Notification.Name {
     static let medicationIntakesDidChange = Notification.Name(
         "com.auralyst.medicationIntakesDidChange"
     )
+    static let symptomEntriesDidChange = Notification.Name(
+        "com.auralyst.symptomEntriesDidChange"
+    )
 }
 
 extension Double {

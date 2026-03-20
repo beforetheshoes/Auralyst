@@ -174,6 +174,10 @@ func assignEntryMutateOps(
     logger: Logger
 ) {
     client.updateSymptomEntry = { entry in
+        ensureJournalCloudMetadata(
+            journalID: entry.journalID,
+            database: database, logger: logger
+        )
         do {
             try database.write { db in
                 try SQLiteSymptomEntry.update(entry).execute(db)
