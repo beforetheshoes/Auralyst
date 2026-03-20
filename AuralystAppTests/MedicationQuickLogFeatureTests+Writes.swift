@@ -14,7 +14,7 @@ struct MedicationQuickLogWriteTests {
         try prepareTestDependencies()
 
         let dataStore = DataStore()
-        let journal = dataStore.createJournal()
+        let journal = try dataStore.createJournal()
         let medication = dataStore.createMedication(
             for: journal, name: "Vitamin D", defaultAmount: 1, defaultUnit: "pill"
         )
@@ -57,7 +57,7 @@ struct MedicationQuickLogWriteTests {
         try prepareTestDependencies()
 
         let dataStore = DataStore()
-        let journal = dataStore.createJournal()
+        let journal = try dataStore.createJournal()
         let medication = dataStore.createMedication(
             for: journal, name: "Vitamin D", defaultAmount: 1, defaultUnit: "pill"
         )
@@ -108,7 +108,7 @@ struct MedicationQuickLogWriteTests {
         try prepareTestDependencies()
 
         let dataStore = DataStore()
-        let journal = dataStore.createJournal()
+        let journal = try dataStore.createJournal()
         let medication = dataStore.createMedication(
             for: journal, name: "Vitamin D", defaultAmount: 1, defaultUnit: "pill"
         )

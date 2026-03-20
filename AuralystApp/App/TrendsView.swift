@@ -55,7 +55,7 @@ struct TrendsView: View {
 
 #Preview("Trends") {
     withPreviewDataStore {
-        let journal = DependencyValues._current.databaseClient.createJournal()
+        let journal = previewValue { try DependencyValues._current.databaseClient.createJournal() }
 
         NavigationStack {
             TrendsView(journalID: journal.id, journalIdentifier: journal.id)

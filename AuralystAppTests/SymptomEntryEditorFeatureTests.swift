@@ -14,7 +14,7 @@ struct SymptomEntryEditorFeatureTests {
         try prepareTestDependencies()
 
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         let entry = try store.createSymptomEntry(
             for: journal, severity: 7, note: "Headache",
             isMenstruating: true
@@ -62,7 +62,7 @@ struct SymptomEntryEditorFeatureTests {
         try prepareTestDependencies()
 
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         let entry = try store.createSymptomEntry(
             for: journal, severity: 5, note: "Original",
             isMenstruating: false
@@ -110,7 +110,7 @@ struct SymptomEntryEditorFeatureTests {
         try prepareTestDependencies()
 
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         let entry = try store.createSymptomEntry(
             for: journal, severity: 3, note: nil,
             isMenstruating: false
@@ -158,7 +158,7 @@ struct SymptomEntryEditorFeatureTests {
         try prepareTestDependencies()
 
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         let entry = try store.createSymptomEntry(
             for: journal, severity: 5, note: nil,
             isMenstruating: false

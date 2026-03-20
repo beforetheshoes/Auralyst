@@ -12,7 +12,7 @@ func assignJournalOps(
     logger: Logger
 ) {
     client.createJournal = {
-        createJournalImpl(database: database, logger: logger)
+        try createJournalImpl(database: database, logger: logger)
     }
 
     client.fetchJournals = {
@@ -49,30 +49,23 @@ func assignJournalOps(
 private func createJournalImpl(
     database: any DatabaseWriter,
     logger: Logger
-) -> SQLiteJournal {
-    do {
-        let journal = SQLiteJournal()
-        try database.write { db in
-            try SQLiteJournal.insert { journal }.execute(db)
-        }
-        if let fetched = try database.read({ db in
-            try SQLiteJournal.find(journal.id).fetchOne(db)
-        }) {
-            logger.info(
-                "Created journal with ID: \(journal.id)"
-            )
-            return fetched
-        } else {
-            logger.error(
-                "Failed to fetch created journal: \(journal.id)"
-            )
-            return journal
-        }
-    } catch {
-        logger.error(
-            "Error creating journal: \(error.localizedDescription)"
+) throws -> SQLiteJournal {
+    let journal = SQLiteJournal()
+    try database.write { db in
+        try SQLiteJournal.insert { journal }.execute(db)
+    }
+    if let fetched = try database.read({ db in
+        try SQLiteJournal.find(journal.id).fetchOne(db)
+    }) {
+        logger.info(
+            "Created journal with ID: \(journal.id)"
         )
-        return SQLiteJournal()
+        return fetched
+    } else {
+        logger.error(
+            "Failed to fetch created journal: \(journal.id)"
+        )
+        return journal
     }
 }
 

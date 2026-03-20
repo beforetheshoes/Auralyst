@@ -14,7 +14,7 @@ extension DataImporterSuite {
         try prepareTestDependencies()
 
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         let medication = store.createMedication(
             for: journal, name: "Schedule Ref",
             defaultAmount: 1, defaultUnit: "pill"
@@ -58,7 +58,7 @@ extension DataImporterSuite {
         try prepareTestDependencies()
 
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         let medication = store.createMedication(
             for: journal, name: "Strict Ref",
             defaultAmount: 1, defaultUnit: "pill"

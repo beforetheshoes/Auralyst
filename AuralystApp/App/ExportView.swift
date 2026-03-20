@@ -160,7 +160,7 @@ private struct DocumentExporter: UIViewControllerRepresentable {
 
     #Preview {
         withPreviewDataStore {
-            let journal = DependencyValues._current.databaseClient.createJournal()
+            let journal = previewValue { try DependencyValues._current.databaseClient.createJournal() }
 
             ExportView(
                 store: Store(initialState: ExportFeature.State(journal: journal)) {

@@ -21,7 +21,7 @@ struct DataImporterSuite {
         try prepareTestDependencies()
 
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         _ = try store.createSymptomEntry(
             for: journal,
             severity: 3,
@@ -73,7 +73,7 @@ struct DataImporterSuite {
         try prepareTestDependencies()
 
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         _ = try store.createSymptomEntry(
             for: journal,
             severity: 7,

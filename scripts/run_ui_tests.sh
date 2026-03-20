@@ -62,6 +62,7 @@ build_xcode_command() {
     -only-testing:AuralystAppUITests
     -resultBundlePath "${RESULT_BUNDLE_PATH}"
     -skipPackagePluginValidation
+    -skipMacroValidation
     CODE_SIGN_IDENTITY=-
     CODE_SIGNING_REQUIRED=NO
     CODE_SIGNING_ALLOWED=NO

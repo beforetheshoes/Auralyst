@@ -13,7 +13,7 @@ struct MedicationQuickLogLoaderSuite {
         try prepareTestDependencies()
 
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         let medication = store.createMedication(
             for: journal,
             name: "Ibuprofen",
@@ -64,7 +64,7 @@ struct MedicationQuickLogLoaderSuite {
                 )
             } operation: {
                 @Dependency(\.databaseClient) var client
-                let journal = client.createJournal()
+                let journal = try client.createJournal()
                 let medication = client.createMedication(
                     journal, "Melatonin", 3, "mg"
                 )
@@ -89,7 +89,7 @@ struct MedicationQuickLogLoaderSuite {
         @Dependency(\.defaultDatabase) var database
         let store = DataStore()
 
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         let medication = store.createMedication(
             for: journal,
             name: "Orphan Med",
@@ -128,7 +128,7 @@ struct MedicationQuickLogLoaderSuite {
         try prepareTestDependencies()
 
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         _ = store.createMedication(
             for: journal, name: "Known Med",
             defaultAmount: 1, defaultUnit: "pill"
@@ -190,7 +190,7 @@ struct MedicationQuickLogLoaderSuite {
         try prepareTestDependencies()
 
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         let medication = store.createMedication(
             for: journal,
             name: "Fallback",
@@ -215,7 +215,7 @@ struct MedicationQuickLogLoaderSuite {
         try prepareTestDependencies()
 
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         let medication = store.createMedication(
             for: journal,
             name: "Real",
@@ -267,7 +267,7 @@ private func createTakenIntakesFixture(
     database: any DatabaseWriter
 ) throws -> TakenIntakesFixture {
     let store = DataStore()
-    let journal = store.createJournal()
+    let journal = try store.createJournal()
 
     let scheduledMedication = store.createMedication(
         for: journal,

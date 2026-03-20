@@ -15,7 +15,7 @@ struct MedicationQuickLogFeatureTests {
         let notificationCenter = NotificationCenter()
 
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         let medication = store.createMedication(
             for: journal,
             name: "Vitamin D",
@@ -77,7 +77,7 @@ struct MedicationQuickLogFeatureTests {
         let notificationCenter = NotificationCenter()
 
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         _ = store.createMedication(
             for: journal,
             name: "Vitamin D",
@@ -120,7 +120,7 @@ struct MedicationQuickLogFeatureTests {
         let notificationCenter = NotificationCenter()
 
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         _ = store.createMedication(
             for: journal,
             name: "Vitamin D",

@@ -11,7 +11,7 @@ import Observation
     @ObservationIgnored
     @Dependency(\.databaseClient) private var databaseClient
 
-    func fetchOrCreateJournal() -> SQLiteJournal {
+    func fetchOrCreateJournal() throws -> SQLiteJournal {
         if let primaryJournalID {
             if let existing = databaseClient.fetchJournal(primaryJournalID) {
                 return existing
@@ -24,7 +24,7 @@ import Observation
             return journal
         }
 
-        let journal = databaseClient.createJournal()
+        let journal = try databaseClient.createJournal()
         primaryJournalID = journal.id
         return journal
     }

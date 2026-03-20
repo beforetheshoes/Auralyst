@@ -24,8 +24,10 @@ extension Double {
 
 #Preview {
     withPreviewDataStore {
-        let journal = DependencyValues._current
-            .databaseClient.createJournal()
+        let journal = previewValue {
+            try DependencyValues._current
+                .databaseClient.createJournal()
+        }
         List {
             MedicationQuickLogSection(
                 store: Store(

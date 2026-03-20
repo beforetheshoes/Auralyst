@@ -24,7 +24,7 @@ struct DataStoreSuite {
         try prepareTestDependencies()
 
         let store = DataStore()
-        let created = store.createJournal()
+        let created = try store.createJournal()
         let fetched = store.fetchJournal(id: created.id)
         #expect(fetched?.id == created.id)
     }
@@ -50,7 +50,7 @@ struct CloudKitMetadataBugSuite {
 
         @Dependency(\.defaultDatabase) var database
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
 
         try database.write { db in
             try db.execute(
@@ -105,7 +105,7 @@ extension DataStoreSuite {
 
         @Dependency(\.defaultDatabase) var database
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         let entry = try store.createSymptomEntry(
             for: journal, severity: 4, note: "Pre-edit log"
         )
@@ -155,7 +155,7 @@ extension DataStoreSuite {
 
         @Dependency(\.defaultDatabase) var database
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         let medication = store.createMedication(
             for: journal, name: "Melatonin",
             defaultAmount: 5, defaultUnit: "mg"
@@ -201,7 +201,7 @@ extension DataStoreSuite {
 
         @Dependency(\.defaultDatabase) var database
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         let entry = try store.createSymptomEntry(
             for: journal, severity: 3, note: "Test"
         )

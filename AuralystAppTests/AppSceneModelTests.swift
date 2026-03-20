@@ -10,8 +10,8 @@ struct AppSceneModelSuite {
         try prepareTestDependencies()
 
         let store = DataStore()
-        let primary = store.createJournal()
-        let shared = store.createJournal()
+        let primary = try store.createJournal()
+        let shared = try store.createJournal()
         let primaryID = primary.id
         let sharedID = shared.id
 

@@ -84,7 +84,7 @@ extension DataImporterSuite {
         try prepareTestDependencies()
 
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
         let medication = store.createMedication(
             for: journal, name: "Block",
             defaultAmount: 1, defaultUnit: "pill"
@@ -122,7 +122,7 @@ extension DataImporterSuite {
         try prepareTestDependencies()
 
         let store = DataStore()
-        let journal = store.createJournal()
+        let journal = try store.createJournal()
 
         let csvData = try DataExporter.exportCSV(for: journal)
         let url = FileManager.default.temporaryDirectory
@@ -171,7 +171,7 @@ private func createJournalWithLinkedRecords(
     noteName: String
 ) throws -> LinkedRecordsFixture {
     let store = DataStore()
-    let journal = store.createJournal()
+    let journal = try store.createJournal()
     let entry = try store.createSymptomEntry(
         for: journal, severity: 4
     )
