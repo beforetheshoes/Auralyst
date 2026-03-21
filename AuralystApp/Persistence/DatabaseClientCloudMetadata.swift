@@ -75,6 +75,16 @@ private func ensureMetadataInTransaction(
     try insertMetadataRow(
         journalID: journalID, db: db
     )
+
+    // Touch the journal's user-table row so SQLiteData's afterUpdate
+    // trigger enqueues it for CloudKit upload.
+    try db.execute(
+        sql: """
+            UPDATE "sqLiteJournal" SET "id" = "id"
+            WHERE lower("id") = lower(?)
+            """,
+        arguments: [journalID.uuidString]
+    )
 }
 
 private func insertMetadataRow(
@@ -148,5 +158,8 @@ private func evaluateMetadataRow(
     } else if hasLastKnown == 1 {
         return .skip
     }
-    return .touchOnly
+    // Row exists but has never been confirmed by the server
+    // (hasLastKnown == 0). Reset to ensure clean metadata state
+    // so CKSyncEngine treats it as a fresh record to create.
+    return .reset
 }

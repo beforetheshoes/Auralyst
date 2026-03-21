@@ -68,8 +68,8 @@ struct CloudMetadataEdgeCaseSuite {
     }
 
     @MainActor
-    @Test("Nil lastKnownServerRecord takes touchOnly path (generated column is 0)")
-    func nilLastKnownServerRecordTouchesOnly() throws {
+    @Test("Nil lastKnownServerRecord resets metadata and touches journal row")
+    func nilLastKnownServerRecordResetsMetadata() throws {
         try prepareTestDependencies(configureSyncEngine: true)
 
         @Dependency(\.defaultDatabase) var database
@@ -78,7 +78,7 @@ struct CloudMetadataEdgeCaseSuite {
 
         // Replace metadata with a row that has NULL lastKnownServerRecord.
         // The generated column hasLastKnownServerRecord computes to 0,
-        // so evaluateMetadataRow falls through to .touchOnly (not .reset).
+        // so evaluateMetadataRow resets the stale row and recreates it.
         try replaceMetadata(for: journal.id, lastKnownServerRecord: nil, database: database)
 
         ensureJournalCloudMetadata(
@@ -88,6 +88,7 @@ struct CloudMetadataEdgeCaseSuite {
         )
 
         #expect(try metadataCount(for: journal.id, database: database) == 1)
+        #expect(try deletedMetadataCount(for: journal.id, database: database) == 0)
         #expect(try journalCount(id: journal.id, database: database) == 1)
     }
 

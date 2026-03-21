@@ -19,16 +19,16 @@ struct MedicationEditorView: View {
                     deleteSection()
                 }
             }
-        }
-        .navigationTitle(store.medicationID == nil ? "Add Medication" : "Edit Medication")
-        .inlineNavigationTitleDisplay()
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { dismiss() }
-            }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Save") { store.send(.saveTapped) }
-                    .disabled(store.name.isEmpty || store.isSaving)
+            .navigationTitle(store.medicationID == nil ? "Add Medication" : "Edit Medication")
+            .inlineNavigationTitleDisplay()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { store.send(.saveTapped) }
+                        .disabled(store.name.isEmpty || store.isSaving)
+                }
             }
         }
         .task { store.send(.task) }
